@@ -151,7 +151,6 @@ class BillPreviewDialog extends StatelessWidget {
         ),
         Builder(
           builder: (context) {
-            final scheme = Theme.of(context).colorScheme;
             return ElevatedButton(
               onPressed: () {
                 Navigator.pop(context);

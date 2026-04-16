@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'glass_container.dart';
-import '../providers/app_providers.dart';
 
 /// A full-screen-friendly bottom sheet with a large number pad for weight/quantity entry.
 /// Returns the entered value as a String when "Done" is tapped, or null if cancelled.
