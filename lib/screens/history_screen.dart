@@ -24,6 +24,7 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
   final TextEditingController _searchController = TextEditingController();
   TimeOfDay? _startTime;
   TimeOfDay? _endTime;
+  String _selectedPaymentMode = 'All';
   final GlobalKey _searchBarKey = GlobalKey();
 
   @override
@@ -149,7 +150,11 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                 // 2. Time Filter
                 bool matchesTime = _isWithinTimeRange(b.time);
 
-                return matchesSearch && matchesTime;
+                // 3. Payment Mode Filter
+                bool matchesPayment = _selectedPaymentMode == 'All' ||
+                    b.paymentMode == _selectedPaymentMode;
+
+                return matchesSearch && matchesTime && matchesPayment;
               }).toList();
 
               final totalSales = filteredBills.fold<double>(0, (sum, b) => sum + b.grandTotal);
@@ -254,6 +259,53 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                               color: const Color(0xFF2ECC71),
                             ),
                           ],
+                        ),
+                        const SizedBox(height: 12),
+                        // ── Payment Mode Filter Chips ──
+                        SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          child: Row(
+                            children: ['All', 'Cash', 'UPI', 'Mix-Payment'].map((mode) {
+                              final isSelected = _selectedPaymentMode == mode;
+                              final chipColor = mode == 'Cash'
+                                  ? const Color(0xFF2ECC71)
+                                  : mode == 'UPI'
+                                      ? Colors.blueAccent
+                                      : mode == 'Mix-Payment'
+                                          ? Colors.orangeAccent
+                                          : Colors.white;
+                              return Padding(
+                                padding: const EdgeInsets.only(right: 8),
+                                child: GestureDetector(
+                                  onTap: () => setState(() => _selectedPaymentMode = mode),
+                                  child: AnimatedContainer(
+                                    duration: const Duration(milliseconds: 200),
+                                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+                                    decoration: BoxDecoration(
+                                      color: isSelected
+                                          ? chipColor.withOpacity(0.2)
+                                          : Colors.white.withOpacity(0.05),
+                                      borderRadius: BorderRadius.circular(20),
+                                      border: Border.all(
+                                        color: isSelected
+                                            ? chipColor.withOpacity(0.6)
+                                            : Colors.white.withOpacity(0.1),
+                                        width: isSelected ? 1.5 : 1,
+                                      ),
+                                    ),
+                                    child: Text(
+                                      mode == 'Mix-Payment' ? 'Mix' : mode,
+                                      style: TextStyle(
+                                        color: isSelected ? chipColor : Colors.white54,
+                                        fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                                        fontSize: 13,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              );
+                            }).toList(),
+                          ),
                         ),
                       ],
                     ),

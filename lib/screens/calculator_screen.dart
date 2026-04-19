@@ -252,7 +252,7 @@ class _CalculatorScreenState extends ConsumerState<CalculatorScreen>
     String fullExpr = _controller.text;
     if (fullExpr.isEmpty) return;
 
-    // Clean up trailing operators before evaluating to avoid errors
+    // Clean up trailing operators before evaluating
     while (fullExpr.isNotEmpty && '+-*/'.contains(fullExpr[fullExpr.length - 1])) {
       fullExpr = fullExpr.substring(0, fullExpr.length - 1);
     }
@@ -280,11 +280,77 @@ class _CalculatorScreenState extends ConsumerState<CalculatorScreen>
       _justEvaluated = true;
     });
 
-    // Save to bill history
-    await _saveToHistory(expressionDisplay, result);
+    // Show payment mode picker before saving
+    final paymentMode = await _showPaymentModePicker();
+    if (paymentMode == null) return; // User dismissed without selecting
+
+    await _saveToHistory(expressionDisplay, result, paymentMode);
   }
 
-  Future<void> _saveToHistory(String expression, double total) async {
+  Future<String?> _showPaymentModePicker() async {
+    return showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (_) {
+        return Container(
+          decoration: BoxDecoration(
+            color: const Color(0xFF1E1E1E),
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+            border: Border.all(color: Colors.white.withOpacity(0.1)),
+          ),
+          padding: const EdgeInsets.fromLTRB(24, 16, 24, 36),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 40, height: 4,
+                  decoration: BoxDecoration(
+                    color: Colors.white24,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                'Payment Mode',
+                style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 6),
+              const Text(
+                'How was this amount paid?',
+                style: TextStyle(color: Colors.white54, fontSize: 13),
+              ),
+              const SizedBox(height: 20),
+              _PaymentModeOption(
+                icon: Icons.payments_outlined,
+                label: 'Cash',
+                color: const Color(0xFF2ECC71),
+                onTap: () => Navigator.pop(context, 'Cash'),
+              ),
+              const SizedBox(height: 10),
+              _PaymentModeOption(
+                icon: Icons.qr_code_scanner_outlined,
+                label: 'UPI',
+                color: Colors.blueAccent,
+                onTap: () => Navigator.pop(context, 'UPI'),
+              ),
+              const SizedBox(height: 10),
+              _PaymentModeOption(
+                icon: Icons.account_balance_wallet_outlined,
+                label: 'Mix Payment',
+                color: Colors.orangeAccent,
+                onTap: () => Navigator.pop(context, 'Mix-Payment'),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _saveToHistory(String expression, double total, String paymentMode) async {
     final operatorName = ref.read(userProvider) ?? 'Calculator';
     final adminEmail =
         ref.read(appUserProvider).valueOrNull?.adminEmail ?? 'local-only';
@@ -295,10 +361,11 @@ class _CalculatorScreenState extends ConsumerState<CalculatorScreen>
         total: total,
         operatorName: operatorName,
         adminEmail: adminEmail,
+        paymentMode: paymentMode,
         replaceBillId: widget.initialBillId,
         replaceFirestoreId: widget.initialFirestoreId,
       );
-      setState(() => _lastSavedMessage = '✓ Saved: $expression');
+      setState(() => _lastSavedMessage = '✓ Saved ($paymentMode): $expression');
       _saveAnimController.reset();
       _saveAnimController.forward();
     } catch (e) {
@@ -603,6 +670,58 @@ class _CalcButtonState extends State<_CalcButton> {
                     fontWeight: FontWeight.bold,
                   ),
                 ),
+        ),
+      ),
+    );
+  }
+}
+
+class _PaymentModeOption extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final Color color;
+  final VoidCallback onTap;
+
+  const _PaymentModeOption({
+    required this.icon,
+    required this.label,
+    required this.color,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        decoration: BoxDecoration(
+          color: color.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: color.withOpacity(0.3)),
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: color.withOpacity(0.15),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(icon, color: color, size: 22),
+            ),
+            const SizedBox(width: 14),
+            Text(
+              label,
+              style: TextStyle(
+                color: color,
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const Spacer(),
+            Icon(Icons.chevron_right, color: color.withOpacity(0.5)),
+          ],
         ),
       ),
     );

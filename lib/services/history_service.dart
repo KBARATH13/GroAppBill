@@ -68,6 +68,7 @@ class HistoryService {
     required double total,
     required String operatorName,
     required String adminEmail,
+    required String paymentMode,
     String? replaceBillId,
     String? replaceFirestoreId,
   }) async {
@@ -80,7 +81,7 @@ class HistoryService {
     final meridiem = now.hour >= 12 ? 'PM' : 'AM';
     final timeStr = '$hour:$minute $meridiem';
     
-    final targetDate = replaceBillId != null ? todayKey() : todayKey(); // For calculator, always use today or we could keep original date if we passed it.
+    final targetDate = replaceBillId != null ? todayKey() : todayKey();
 
     final newRecord = BillingHistoryRecord(
       billNumber: replaceBillId ?? 'CALC-${DateTime.now().millisecondsSinceEpoch}',
@@ -88,7 +89,7 @@ class HistoryService {
       time: timeStr,
       operatorName: operatorName,
       customerType: 'Calculator',
-      paymentMode: 'Calculation',
+      paymentMode: paymentMode,
       grandTotal: total,
       cashAmount: 0,
       upiAmount: 0,

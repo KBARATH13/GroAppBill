@@ -19,16 +19,43 @@ class AuthService {
   }
 
   /// Stream that emits a fresh [AppUser] whenever auth state or Firestore doc changes.
-  static Stream<AppUser?> get appUserStream {
-    return _auth.authStateChanges().asyncMap((firebaseUser) async {
-      if (firebaseUser == null) return null;
+  /// On repeat launches, the first emit is served from Firestore offline cache
+  /// (near-instant), eliminating the visible loading spinner.
+  static Stream<AppUser?> get appUserStream async* {
+    // ── Fast path: pre-fetch using the synchronous currentUser ──────────────
+    // FirebaseAuth restores the sign-in token from local storage synchronously.
+    // With Firestore persistence enabled, fetchAppUser() will be served from
+    // the device cache on repeat launches (~10-50ms instead of 1-3 seconds).
+    final currentUser = _auth.currentUser;
+    if (currentUser != null) {
+      final cached = await fetchAppUser(currentUser.uid);
+      if (cached != null) {
+        if (cached.isBlocked) {
+          await _auth.signOut();
+          yield null;
+        } else {
+          yield cached; // ← App renders immediately from cache
+        }
+      }
+    } else {
+      yield null; // Not signed in — go straight to login screen
+    }
+
+    // ── Slow path: keep listening for real-time auth changes ────────────────
+    // This handles sign-in, sign-out, and server-side user doc changes.
+    await for (final firebaseUser in _auth.authStateChanges()) {
+      if (firebaseUser == null) {
+        yield null;
+        continue;
+      }
       final user = await fetchAppUser(firebaseUser.uid);
       if (user?.isBlocked == true) {
         await _auth.signOut();
-        return null;
+        yield null;
+      } else {
+        yield user;
       }
-      return user;
-    });
+    }
   }
 
   /// Sign up with email/password. Creates Firestore user doc with correct role.

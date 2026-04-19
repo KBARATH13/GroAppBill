@@ -9,6 +9,7 @@ import '../widgets/cart_selection_tabs.dart';
 import '../widgets/delivery_info_card.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter/rendering.dart';
 
 class BillingScreen extends ConsumerStatefulWidget {
   const BillingScreen({super.key});
@@ -30,6 +31,7 @@ class _BillingScreenState extends ConsumerState<BillingScreen> {
   late ScrollController _scrollController;
   bool _isProcessingScan = false;
   final GlobalKey _searchBarKey = GlobalKey();
+  late FocusNode _searchFocusNode;
 
   @override
   void initState() {
@@ -37,7 +39,14 @@ class _BillingScreenState extends ConsumerState<BillingScreen> {
     _searchController = TextEditingController();
     _scrollController = ScrollController();
     _quantityController = TextEditingController();
-    
+
+    // FocusNode listener: scrolls to search bar whenever it gains focus,
+    // including when focus is automatically restored after the numpad closes.
+    _searchFocusNode = FocusNode();
+    _searchFocusNode.addListener(() {
+      if (_searchFocusNode.hasFocus) _scrollToSearchBar();
+    });
+
     final delivery = ref.read(deliveryInfoProvider);
     _apartmentController = TextEditingController(text: delivery.apartmentName);
     _blockDoorController = TextEditingController(text: delivery.blockAndDoor);
@@ -51,11 +60,37 @@ class _BillingScreenState extends ConsumerState<BillingScreen> {
   void dispose() {
     _searchController.dispose();
     _scrollController.dispose();
+    _searchFocusNode.dispose();
     _quantityController.dispose();
     _operatorController.dispose();
     _apartmentController.dispose();
     _blockDoorController.dispose();
     super.dispose();
+  }
+
+  // Always scrolls the search bar to the very top of the viewport.
+  // This approach is the most efficient as it uses the framework's 
+  // built-in rendering logic to compute the exact reveal offset.
+  void _scrollToSearchBar() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final ctx = _searchBarKey.currentContext;
+      if (ctx == null || !_scrollController.hasClients) return;
+      
+      final renderObject = ctx.findRenderObject();
+      if (renderObject == null) return;
+
+      final viewport = RenderAbstractViewport.maybeOf(renderObject);
+      if (viewport != null) {
+        // alignment 0.0 means "scroll until the top of the widget is at the top of the viewport"
+        final revealOffset = viewport.getOffsetToReveal(renderObject, 0.0).offset;
+        
+        _scrollController.animateTo(
+          revealOffset.clamp(0.0, _scrollController.position.maxScrollExtent),
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeInOut,
+        );
+      }
+    });
   }
 
   void _addToCart({Product? overriddenProduct}) {
@@ -350,35 +385,18 @@ class _BillingScreenState extends ConsumerState<BillingScreen> {
                   key: _searchBarKey,
                   child: TextField(
                     controller: _searchController,
+                    focusNode: _searchFocusNode,
                     onChanged: (value) {
                       setState(() => _searchTerm = value.trim());
                     },
-                    onTap: () {
-                      if (_searchBarKey.currentContext != null) {
-                        Scrollable.ensureVisible(
-                          _searchBarKey.currentContext!,
-                          duration: const Duration(milliseconds: 300),
-                          curve: Curves.easeInOut,
-                          alignment: 0.0,
-                        );
-                      }
-                    },
+                    onTap: _scrollToSearchBar,
                     style: const TextStyle(color: Colors.white),
                     decoration: InputDecoration(
                       hintText: 'Search products...',
                       hintStyle: const TextStyle(color: Colors.white38),
                       prefixIcon: IconButton(
                         icon: const Icon(Icons.search, color: Colors.white70),
-                        onPressed: () {
-                          if (_searchBarKey.currentContext != null) {
-                            Scrollable.ensureVisible(
-                              _searchBarKey.currentContext!,
-                              duration: const Duration(milliseconds: 300),
-                              curve: Curves.easeInOut,
-                              alignment: 0.0,
-                            );
-                          }
-                        },
+                        onPressed: _scrollToSearchBar,
                       ),
                       suffixIcon: Row(
                         mainAxisSize: MainAxisSize.min,
