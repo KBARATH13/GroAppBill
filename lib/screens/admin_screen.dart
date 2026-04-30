@@ -403,287 +403,299 @@ class _AdminScreenState extends ConsumerState<AdminScreen> {
       filteredProducts.sort((a, b) => b.price.compareTo(a.price));
     }
 
-    return SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 100), // Extra space for floating nav
-        child: Column(
-          children: [
-            // Header with buttons
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+    return CustomScrollView(
+      slivers: [
+        // Top Padding for status bar
+        const SliverToBoxAdapter(child: SizedBox(height: 16)),
+
+        // Header & Filters
+        SliverPadding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          sliver: SliverToBoxAdapter(
+            child: Column(
               children: [
-                const Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Manage your products',
-                        style: TextStyle(fontSize: 14, color: Colors.white70),
+                // Header with buttons
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Manage your products',
+                            style: TextStyle(fontSize: 14, color: Colors.white70),
+                          ),
+                        ],
                       ),
-                    ],
+                    ),
+                    ElevatedButton.icon(
+                      onPressed: _handleSync,
+                      icon: Builder(
+                        builder: (context) {
+                          final scheme = Theme.of(context).colorScheme;
+                          return Stack(
+                            clipBehavior: Clip.none,
+                            children: [
+                              Icon(
+                                _hasLocalChanges ? Icons.cloud_upload : Icons.sync,
+                                color: _hasLocalChanges ? scheme.error : Colors.white,
+                              ),
+                              if (widget.hasPendingSync || _hasLocalChanges)
+                                Positioned(
+                                  right: -4,
+                                  top: -4,
+                                  child: Container(
+                                    width: 10,
+                                    height: 10,
+                                    decoration: BoxDecoration(
+                                      color: _hasLocalChanges ? scheme.error : scheme.tertiary,
+                                      shape: BoxShape.circle,
+                                      border: Border.all(color: Colors.white24, width: 1.5),
+                                    ),
+                                  ),
+                                ),
+                            ],
+                          );
+                        },
+                      ),
+                      label: Text(
+                        _hasLocalChanges
+                            ? 'Publish'
+                            : (widget.hasPendingSync ? 'Sync!' : 'Sync'),
+                        style: const TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: _hasLocalChanges
+                            ? Colors.white.withOpacity(0.2)
+                            : Colors.white.withOpacity(0.1),
+                        foregroundColor: Colors.white,
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    if (ref.read(appUserProvider).valueOrNull?.isAdmin == true ||
+                        ref.read(appUserProvider).valueOrNull?.canAddInventory == true)
+                      ElevatedButton.icon(
+                        onPressed: _openAddForm,
+                        icon: const Icon(Icons.add),
+                        label: const Text('Add', style: TextStyle(fontWeight: FontWeight.bold)),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF2ECC71).withOpacity(0.4),
+                          foregroundColor: Colors.white,
+                          elevation: 0,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        ),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+
+                // Search Bar
+                TextField(
+                  controller: _searchController,
+                  style: const TextStyle(color: Colors.white),
+                  onChanged: (value) => setState(() => _searchQuery = value),
+                  decoration: InputDecoration(
+                    hintText: 'Search products...',
+                    hintStyle: const TextStyle(color: Colors.white38),
+                    prefixIcon: const Icon(Icons.search, color: Colors.white70),
+                    suffixIcon: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (_searchQuery.isNotEmpty)
+                          IconButton(
+                            icon: const Icon(Icons.clear, color: Colors.white70),
+                            onPressed: () {
+                              _searchController.clear();
+                              setState(() => _searchQuery = '');
+                            },
+                            tooltip: 'Clear Search',
+                          ),
+                        IconButton(
+                          icon: const Icon(Icons.qr_code_scanner, color: Colors.white),
+                          onPressed: _openBarcodeScanner,
+                          tooltip: 'Scan Barcode',
+                        ),
+                      ],
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide(color: Colors.white.withOpacity(0.3)),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: const BorderSide(color: Colors.white),
+                    ),
                   ),
                 ),
-                ElevatedButton.icon(
-                  onPressed: _handleSync,
-                  icon: Builder(
-                    builder: (context) {
-                      final scheme = Theme.of(context).colorScheme;
-                      return Stack(
-                        clipBehavior: Clip.none,
-                        children: [
-                          Icon(
-                            _hasLocalChanges ? Icons.cloud_upload : Icons.sync,
-                            color: _hasLocalChanges ? scheme.error : Colors.white,
-                          ),
-                          if (widget.hasPendingSync || _hasLocalChanges)
-                            Positioned(
-                              right: -4,
-                              top: -4,
-                              child: Container(
-                                width: 10,
-                                height: 10,
-                                decoration: BoxDecoration(
-                                  color: _hasLocalChanges ? scheme.error : scheme.tertiary,
-                                  shape: BoxShape.circle,
-                                  border: Border.all(color: Colors.white24, width: 1.5),
+                const SizedBox(height: 12),
+
+                // Categories Row
+                SizedBox(
+                  height: 44,
+                  child: ListView.builder(
+                    scrollDirection: Axis.horizontal,
+                    itemCount: categories.length + 1,
+                    itemBuilder: (context, index) {
+                      final category = index == 0 ? 'All' : categories[index - 1];
+                      final isSelected = _filterCategory == category;
+                      return Padding(
+                        padding: const EdgeInsets.only(right: 8.0),
+                        child: GestureDetector(
+                          onTap: () => setState(() => _filterCategory = category),
+                          child: GlassContainer(
+                            color: isSelected ? scheme.primary.withOpacity(0.4) : Colors.white.withOpacity(0.12),
+                            borderRadius: 12,
+                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                            child: Center(
+                              child: Text(
+                                category,
+                                style: TextStyle(
+                                  fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                                  color: Colors.white,
                                 ),
                               ),
                             ),
-                        ],
+                          ),
+                        ),
                       );
                     },
                   ),
-                  label: Text(
-                    _hasLocalChanges
-                        ? 'Publish'
-                        : (widget.hasPendingSync ? 'Sync!' : 'Sync'),
-                    style: const TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: _hasLocalChanges
-                        ? Colors.white.withOpacity(0.2)
-                        : Colors.white.withOpacity(0.1),
-                    foregroundColor: Colors.white,
-                    elevation: 0,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                  ),
                 ),
-                const SizedBox(width: 8),
-                if (ref.read(appUserProvider).valueOrNull?.isAdmin == true || ref.read(appUserProvider).valueOrNull?.canAddInventory == true)
-                  ElevatedButton.icon(
-                    onPressed: _openAddForm,
-                    icon: const Icon(Icons.add),
-                    label: const Text('Add', style: TextStyle(fontWeight: FontWeight.bold)),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF2ECC71).withOpacity(0.4),
-                      foregroundColor: Colors.white,
-                      elevation: 0,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                const SizedBox(height: 20),
+
+                // Sorting Dropdown
+                DropdownButtonFormField<String>(
+                  dropdownColor: Colors.blueGrey[900],
+                  style: const TextStyle(color: Colors.white),
+                  value: _sortBy,
+                  decoration: InputDecoration(
+                    labelText: 'Sort By',
+                    labelStyle: const TextStyle(color: Colors.white70),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide(color: Colors.white.withOpacity(0.3)),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: const BorderSide(color: Colors.white),
+                    ),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  ),
+                  items: ['Name (A-Z)', 'Price: Low to High', 'Price: High to Low']
+                      .map((s) => DropdownMenuItem(value: s, child: Text(s)))
+                      .toList(),
+                  onChanged: (v) {
+                    if (v != null) setState(() => _sortBy = v);
+                  },
+                ),
+                const SizedBox(height: 16),
+
+                // Local Changes Notification
+                if (filteredProducts.isNotEmpty && !_hasLocalChanges && widget.hasPendingSync)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: GlassContainer(
+                      color: Colors.orange,
+                      padding: const EdgeInsets.all(12),
+                      child: const Row(
+                        children: [
+                          Icon(Icons.info_outline, color: Colors.orangeAccent),
+                          SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'Note: Your inventory is currently local. Publish it to allow other devices to sync.',
+                              style: TextStyle(color: Colors.white, fontSize: 13),
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
               ],
             ),
-            const SizedBox(height: 16),
+          ),
+        ),
 
-            // Search Bar
-            TextField(
-              controller: _searchController,
-              style: const TextStyle(color: Colors.white),
-              onChanged: (value) => setState(() => _searchQuery = value),
-              decoration: InputDecoration(
-                hintText: 'Search products...',
-                hintStyle: const TextStyle(color: Colors.white38),
-                prefixIcon: const Icon(Icons.search, color: Colors.white70),
-                suffixIcon: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    if (_searchQuery.isNotEmpty)
-                      IconButton(
-                        icon: const Icon(Icons.clear, color: Colors.white70),
-                        onPressed: () {
-                          _searchController.clear();
-                          setState(() => _searchQuery = '');
-                        },
-                        tooltip: 'Clear Search',
-                      ),
-                    IconButton(
-                      icon: const Icon(Icons.qr_code_scanner, color: Colors.white),
-                      onPressed: _openBarcodeScanner,
-                      tooltip: 'Scan Barcode',
-                    ),
-                  ],
-                ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide(color: Colors.white.withOpacity(0.3)),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: const BorderSide(color: Colors.white),
-                ),
-              ),
+        // Product List - LAZY LOADED
+        if (filteredProducts.isEmpty)
+          const SliverFillRemaining(
+            hasScrollBody: false,
+            child: Center(
+              child: Text('No products found', style: TextStyle(color: Colors.white70)),
             ),
-            const SizedBox(height: 12),
-
-
-            SizedBox(
-              height: 44,
-              child: ListView.builder(
-                scrollDirection: Axis.horizontal,
-                itemCount: categories.length + 1,
-                itemBuilder: (context, index) {
-                  final category = index == 0 ? 'All' : categories[index - 1];
-                  final isSelected = _filterCategory == category;
-                  return Padding(
-                    padding: const EdgeInsets.only(right: 8.0),
-                    child: GestureDetector(
-                      onTap: () => setState(() => _filterCategory = category),
-                      child: GlassContainer(
-                        color: isSelected ? scheme.primary.withOpacity(0.4) : Colors.white.withOpacity(0.12),
-                        borderRadius: 12,
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                        child: Center(
-                          child: Text(
-                            category,
-                            style: TextStyle(
-                              fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                              color: Colors.white,
-                            ),
+          )
+        else
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 120), // Bottom padding for nav
+            sliver: SliverList(
+              delegate: SliverChildBuilderDelegate(
+                (context, index) {
+                  final product = filteredProducts[index];
+                  return Container(
+                    margin: const EdgeInsets.only(bottom: 12),
+                    child: GlassContainer(
+                      borderRadius: 16,
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(16),
+                        onTap: () => _showProductOptions(product),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 20,
+                            vertical: 16,
+                          ),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                flex: 3,
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      product.name,
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 16,
+                                        color: Colors.white,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      '${product.category} • ${product.unit}',
+                                      style: const TextStyle(
+                                        color: Colors.white60,
+                                        fontSize: 12,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              Expanded(
+                                flex: 1,
+                                child: Text(
+                                  '₹${product.price}',
+                                  textAlign: TextAlign.right,
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 20,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                       ),
                     ),
                   );
                 },
+                childCount: filteredProducts.length,
               ),
             ),
-            const SizedBox(height: 20),
-            // Sorting Dropdown
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 8.0),
-              child: DropdownButtonFormField<String>(
-                dropdownColor: Colors.blueGrey[900],
-                style: const TextStyle(color: Colors.white),
-                value: _sortBy,
-                decoration: InputDecoration(
-                  labelText: 'Sort By',
-                  labelStyle: const TextStyle(color: Colors.white70),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide(color: Colors.white.withOpacity(0.3)),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: const BorderSide(color: Colors.white),
-                  ),
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                ),
-                items: ['Name (A-Z)', 'Price: Low to High', 'Price: High to Low']
-                    .map((s) => DropdownMenuItem(value: s, child: Text(s)))
-                    .toList(),
-                onChanged: (v) {
-                  if (v != null) setState(() => _sortBy = v);
-                },
-              ),
-            ),
-            const SizedBox(height: 16),
-
-            // Products List (Item Bars)
-            if (filteredProducts.isNotEmpty && !_hasLocalChanges && widget.hasPendingSync) ...[
-               Padding(
-                padding: const EdgeInsets.only(bottom: 12),
-                child: GlassContainer(
-                  color: Colors.orange,
-                  padding: const EdgeInsets.all(12),
-                  child: const Row(
-                    children: [
-                      Icon(Icons.info_outline, color: Colors.orangeAccent),
-                      SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          'Note: Your inventory is currently local. Publish it to allow other devices to sync.',
-                          style: TextStyle(color: Colors.white, fontSize: 13),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ],
-
-            filteredProducts.isEmpty
-                ? const Center(
-                    child: Padding(
-                      padding: EdgeInsets.only(top: 40),
-                      child: Text('No products found', style: TextStyle(color: Colors.white70)),
-                    ),
-                  )
-                : ListView.builder(
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    itemCount: filteredProducts.length,
-                    itemBuilder: (context, index) {
-                      final product = filteredProducts[index];
-                      return Container(
-                        margin: const EdgeInsets.only(bottom: 12),
-                        child: GlassContainer(
-                          borderRadius: 16,
-                          child: InkWell(
-                            borderRadius: BorderRadius.circular(16),
-                            onTap: () => _showProductOptions(product),
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 20,
-                                vertical: 16,
-                              ),
-                              child: Row(
-                                children: [
-                                  Expanded(
-                                    flex: 3,
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          product.name,
-                                          style: const TextStyle(
-                                            fontWeight: FontWeight.bold,
-                                            fontSize: 16,
-                                            color: Colors.white,
-                                          ),
-                                        ),
-                                        const SizedBox(height: 4),
-                                        Text(
-                                          '${product.category} • ${product.unit}',
-                                          style: const TextStyle(
-                                            color: Colors.white60,
-                                            fontSize: 12,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                  Expanded(
-                                    flex: 1,
-                                    child: Text(
-                                      '₹${product.price}',
-                                      textAlign: TextAlign.right,
-                                      style: const TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 20,
-                                        color: Colors.white,
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-          ],
-        ),
+          ),
+      ],
     );
   }
 

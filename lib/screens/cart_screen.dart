@@ -347,14 +347,37 @@ class _CartScreenState extends ConsumerState<CartScreen> {
   // ─── Share Receipt ───────────────────────────────────────────────────────────
 
   void _offerShareReceipt(Bill bill) {
-    final sb = StringBuffer();
-    sb.writeln('🛒 BILLING RECEIPT');
-    sb.writeln('─────────────────────────');
-    sb.writeln('Bill #  : ${bill.billNumber}');
-    sb.writeln('Date    : ${bill.date}   ${bill.time}');
-    sb.writeln('Total   : ₹${bill.grandTotal.toStringAsFixed(2)}');
-    sb.writeln('─────────────────────────');
-    sb.writeln('Thank You!');
+    final shop = ref.read(shopInfoProvider);
+    final buffer = StringBuffer();
+    
+    buffer.writeln('━━━━━━━━━━━━━━━━━━━━━━━━');
+    buffer.writeln('  *${shop.shopName.toUpperCase()}*');
+    if (shop.address.isNotEmpty) buffer.writeln('${shop.address}');
+    if (shop.phone.isNotEmpty) buffer.writeln('PH: ${shop.phone}');
+    buffer.writeln('━━━━━━━━━━━━━━━━━━━━━━━━');
+    buffer.writeln('Bill #: ${bill.billNumber}');
+    buffer.writeln('Date  : ${bill.date} ${bill.time}');
+    buffer.writeln('Operator: ${bill.operatorName}');
+    buffer.writeln('--------------------------------');
+    buffer.writeln('*ITEMS*          *QTY*     *TOTAL*');
+    
+    for (final item in bill.cartItems) {
+      final nameStr = item.product.name;
+      final name = nameStr.length > 14 
+          ? nameStr.substring(0, 14) 
+          : nameStr.padRight(14);
+      final qty = '${item.quantity}${item.product.unit}'.padRight(8);
+      final total = '₹${item.total.toStringAsFixed(2)}';
+      buffer.writeln('$name $qty $total');
+    }
+    
+    buffer.writeln('--------------------------------');
+    buffer.writeln('Total Items: ${bill.cartItems.length}');
+    buffer.writeln('*Grand Total: ₹${bill.grandTotal.toStringAsFixed(2)}*');
+    buffer.writeln('Payment: ${bill.paymentMode}');
+    buffer.writeln('━━━━━━━━━━━━━━━━━━━━━━━━');
+    buffer.writeln('${shop.greeting}');
+    if (shop.extraInfo.isNotEmpty) buffer.writeln('${shop.extraInfo}');
 
     showDialog(
       context: context,
@@ -369,7 +392,7 @@ class _CartScreenState extends ConsumerState<CartScreen> {
           ElevatedButton(
             onPressed: () {
               Navigator.pop(ctx);
-              Share.share(sb.toString());
+              Share.share(buffer.toString());
             },
             child: const Text('Share'),
           ),
@@ -702,20 +725,39 @@ class _CartScreenState extends ConsumerState<CartScreen> {
               padding: const EdgeInsets.fromLTRB(24, 24, 24, 40),
               child: Column(
                 children: [
-                  // Total
+                  // Items Count & Total
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Text('Total Amount',
-                          style:
-                              TextStyle(color: Colors.white70, fontSize: 16)),
-                      Text(
-                        '₹${cart.fold<double>(0, (sum, item) => sum + item.total).toStringAsFixed(2)}',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 32,
-                          fontWeight: FontWeight.bold,
-                        ),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text('Total Items',
+                              style: TextStyle(color: Colors.white54, fontSize: 13)),
+                          Text(
+                            '${cart.length} Products',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          const Text('Total Amount',
+                              style: TextStyle(color: Colors.white54, fontSize: 13)),
+                          Text(
+                            '₹${cart.fold<double>(0, (sum, item) => sum + item.total).toStringAsFixed(2)}',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 28,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   ),

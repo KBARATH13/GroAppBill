@@ -50,12 +50,9 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
     return 'Day Before Yesterday  ($display)';
   }
 
-  bool _isWithinTimeRange(String billTimeStr) {
-    if (_startTime == null && _endTime == null) return true;
-
+  int _timeStrToMinutes(String timeStr) {
     try {
-      // billTimeStr format: "09:30 PM"
-      final parts = billTimeStr.split(' ');
+      final parts = timeStr.split(' ');
       final tParts = parts[0].split(':');
       int hour = int.parse(tParts[0]);
       int minute = int.parse(tParts[1]);
@@ -64,8 +61,17 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
       if (isPm && hour != 12) hour += 12;
       if (!isPm && hour == 12) hour = 0;
 
-      final billTime = TimeOfDay(hour: hour, minute: minute);
-      final billMinutes = billTime.hour * 60 + billTime.minute;
+      return hour * 60 + minute;
+    } catch (e) {
+      return 0;
+    }
+  }
+
+  bool _isWithinTimeRange(String billTimeStr) {
+    if (_startTime == null && _endTime == null) return true;
+
+    try {
+      final billMinutes = _timeStrToMinutes(billTimeStr);
 
       if (_startTime != null) {
         final startMinutes = _startTime!.hour * 60 + _startTime!.minute;
@@ -156,6 +162,26 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
 
                 return matchesSearch && matchesTime && matchesPayment;
               }).toList();
+              
+              // Sort descending based strictly on time
+              filteredBills.sort((a, b) {
+                final aMins = _timeStrToMinutes(a.time);
+                final bMins = _timeStrToMinutes(b.time);
+                if (aMins != bMins) {
+                  return bMins.compareTo(aMins);
+                }
+
+                // Tie-breaker: If logged in the exact same minute, use the bill ID
+                int aId = 0;
+                int bId = 0;
+                if (a.billNumber.startsWith('B-')) {
+                   aId = int.tryParse(a.billNumber.substring(2)) ?? 0;
+                }
+                if (b.billNumber.startsWith('B-')) {
+                   bId = int.tryParse(b.billNumber.substring(2)) ?? 0;
+                }
+                return bId.compareTo(aId);
+              });
 
               final totalSales = filteredBills.fold<double>(0, (sum, b) => sum + b.grandTotal);
 
@@ -185,7 +211,7 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                                 items: _windowKeys.map((key) {
                                   return DropdownMenuItem(
                                     value: key,
-                                    child: Text(_labelFor(key).split(' ')[0]),
+                                    child: Text(_labelFor(key).split('  ')[0], overflow: TextOverflow.ellipsis),
                                   );
                                 }).toList(),
                                 onChanged: (v) => v != null ? setState(() => _selectedDateKey = v) : null,
@@ -350,7 +376,7 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                                     ),
                                     title: Text(
                                       isCalculation
-                                          ? '📊 Calculated • ${bill.operatorName}'
+                                          ? '${bill.billNumber} 📊 • ${bill.operatorName}'
                                           : '${bill.billNumber} — ${bill.operatorName}',
                                       style: const TextStyle(fontWeight: FontWeight.w600, color: Colors.white),
                                     ),
@@ -446,7 +472,7 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Text(
-                      isCalculation ? '📊 Calculation' : 'Bill ${bill.billNumber}',
+                      isCalculation ? '${bill.billNumber} 📊 Calculation' : 'Bill ${bill.billNumber}',
                       style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.white),
                     ),
                     IconButton(
@@ -533,9 +559,19 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text(
-                        isCalculation ? 'Result:' : 'Grand Total:',
-                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Colors.white),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            isCalculation ? 'Result:' : 'Grand Total:',
+                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Colors.white),
+                          ),
+                          if (!isCalculation)
+                            Text(
+                              '${bill.itemsJson.length} Products',
+                              style: const TextStyle(fontSize: 12, color: Colors.white54),
+                            ),
+                        ],
                       ),
                       Text(
                         'Rs.${bill.grandTotal.toStringAsFixed(2)}',
@@ -676,32 +712,37 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
   }
 
   void _handleShareBill(BuildContext context, BillingHistoryRecord bill) {
+    final shop = ref.read(shopInfoProvider);
     final buffer = StringBuffer();
-    // Use asterisk for WhatsApp bolding
-    buffer.writeln('*--- BILL RECEIPT ---*');
+    
+    buffer.writeln('━━━━━━━━━━━━━━━━━━━━━━━━');
+    buffer.writeln('  *${shop.shopName.toUpperCase()}*');
+    if (shop.address.isNotEmpty) buffer.writeln('${shop.address}');
+    if (shop.phone.isNotEmpty) buffer.writeln('PH: ${shop.phone}');
+    buffer.writeln('━━━━━━━━━━━━━━━━━━━━━━━━');
     buffer.writeln('Bill #: ${bill.billNumber}');
-    buffer.writeln('Date: ${bill.date} ${bill.time}');
-    buffer.writeln('Customer: ${bill.customerType}');
-    if (bill.apartmentName != null && bill.apartmentName!.isNotEmpty) {
-      buffer.writeln('Location: ${bill.apartmentName}, ${bill.blockAndDoor ?? ""}');
-    }
+    buffer.writeln('Date  : ${bill.date} ${bill.time}');
+    buffer.writeln('Operator: ${bill.operatorName}');
     buffer.writeln('--------------------------------');
+    buffer.writeln('*ITEMS*          *QTY*     *TOTAL*');
     
     for (final item in bill.itemsJson) {
-      final name = item['name'];
-      final weight = item['weight'];
-      final unit = item['unit'];
-      final price = item['price'];
-      final total = item['total'];
-      buffer.writeln('*$name*');
-      buffer.writeln('  $weight $unit x Rs.$price = Rs.$total');
+      final nameStr = (item['name'] as String? ?? 'Item');
+      final name = nameStr.length > 14 
+          ? nameStr.substring(0, 14) 
+          : nameStr.padRight(14);
+      final qty = '${item['weight']}${item['unit']}'.padRight(8);
+      final total = '₹${item['total']}';
+      buffer.writeln('$name $qty $total');
     }
     
     buffer.writeln('--------------------------------');
-    buffer.writeln('*Grand Total: Rs.${bill.grandTotal}*');
-    buffer.writeln('Mode: ${bill.paymentMode}');
-    buffer.writeln('--------------------------------');
-    buffer.writeln('Thank you for shopping with us!');
+    buffer.writeln('Total Items: ${bill.itemsJson.length}');
+    buffer.writeln('*Grand Total: ₹${bill.grandTotal.toStringAsFixed(2)}*');
+    buffer.writeln('Payment: ${bill.paymentMode}');
+    buffer.writeln('━━━━━━━━━━━━━━━━━━━━━━━━');
+    buffer.writeln('${shop.greeting}');
+    if (shop.extraInfo.isNotEmpty) buffer.writeln('${shop.extraInfo}');
     
     Share.share(buffer.toString(), subject: 'Bill Receipt ${bill.billNumber}');
   }

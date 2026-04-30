@@ -119,12 +119,18 @@ class BillPreviewDialog extends StatelessWidget {
               ),
               
               const Text('------------------------------------------------', style: TextStyle(fontFamily: 'monospace')),
-              Align(
-                alignment: Alignment.centerRight,
-                child: Text(
-                  'Grand Total: Rs.${grandTotal.toStringAsFixed(2)}',
-                  style: const TextStyle(fontFamily: 'monospace', fontWeight: FontWeight.bold, fontSize: 13),
-                ),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'Total Items: ${cart.length}',
+                    style: const TextStyle(fontFamily: 'monospace', fontWeight: FontWeight.bold, fontSize: 13),
+                  ),
+                  Text(
+                    'Grand Total: Rs.${grandTotal.toStringAsFixed(2)}',
+                    style: const TextStyle(fontFamily: 'monospace', fontWeight: FontWeight.bold, fontSize: 13),
+                  ),
+                ],
               ),
               const SizedBox(height: 10),
               const Align(

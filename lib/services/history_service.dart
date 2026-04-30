@@ -83,8 +83,10 @@ class HistoryService {
     
     final targetDate = replaceBillId != null ? todayKey() : todayKey();
 
+    String newBillNumber = replaceBillId ?? 'B-${await getDailyBillCount()}';
+
     final newRecord = BillingHistoryRecord(
-      billNumber: replaceBillId ?? 'CALC-${DateTime.now().millisecondsSinceEpoch}',
+      billNumber: newBillNumber,
       date: targetDate,
       time: timeStr,
       operatorName: operatorName,
@@ -172,11 +174,23 @@ class HistoryService {
     return getSummaryForDate(todayKey());
   }
 
-  /// Returns the next bill number for today (e.g., 3 if 2 bills were printed today).
+  /// Returns the next bill number for today. Only counts regular bills (B-x).
   static Future<int> getDailyBillCount() async {
     final records = await _loadAndPurge();
     final today = todayKey();
-    return records.where((r) => r.date == today).length + 1;
+    
+    int maxNumber = 0;
+    for (final r in records) {
+      if (r.date == today && r.billNumber.startsWith('B-')) {
+        final numberStr = r.billNumber.substring(2);
+        final number = int.tryParse(numberStr);
+        if (number != null && number > maxNumber) {
+          maxNumber = number;
+        }
+      }
+    }
+    
+    return maxNumber + 1;
   }
 
   // ===== Public helpers =====
