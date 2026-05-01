@@ -62,53 +62,15 @@ class _AdminScreenState extends ConsumerState<AdminScreen> {
         _searchQuery = product.name;
       });
     } else {
-    final user = ref.read(appUserProvider).valueOrNull;
-    if (user?.isAdmin != true && user?.canAddInventory != true) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Access Denied: Inventory clearance required')),
-      );
-      return;
-    }
-
-    final shouldAdd = await showDialog<bool>(
-        context: context,
-        barrierDismissible: false,
-        builder: (ctx) => Builder(
-          builder: (context) {
-            final scheme = Theme.of(context).colorScheme;
-            return AlertDialog(
-              title: Row(
-                children: [
-                  Icon(Icons.warning_amber_rounded, color: scheme.tertiary),
-                  const SizedBox(width: 8),
-                  const Text('Product Not Found'),
-                ],
-              ),
-              content: Text('Product with barcode "$code" was not found in inventory. Would you like to add it now?'),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(ctx, false),
-                  child: const Text('Cancel'),
-                ),
-                ElevatedButton.icon(
-                  onPressed: () => Navigator.pop(ctx, true),
-                  icon: const Icon(Icons.add),
-                  label: const Text('Add Product'),
-                  style: ElevatedButton.styleFrom(backgroundColor: scheme.secondary),
-                ),
-              ],
-            );
-          },
-        ),
-      );
-
-      if (shouldAdd == true) {
-        await showDialog(
-          context: context,
-          barrierDismissible: false,
-          builder: (ctx) => ProductFormDialog(initialBarcode: code),
+      final user = ref.read(appUserProvider).valueOrNull;
+      if (user?.isAdmin != true && user?.canAddInventory != true) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Access Denied: Inventory clearance required')),
         );
+        return;
       }
+
+      await ProductFormDialog.showProductNotFoundDialog(context, code);
     }
   }
 

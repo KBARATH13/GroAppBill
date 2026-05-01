@@ -18,6 +18,46 @@ class ProductFormDialog extends ConsumerStatefulWidget {
 
   @override
   ConsumerState<ProductFormDialog> createState() => _ProductFormDialogState();
+
+  /// A unified "Product Not Found" dialog that encourages adding the product to inventory.
+  static Future<void> showProductNotFoundDialog(BuildContext context, String barcode) async {
+    final scheme = Theme.of(context).colorScheme;
+    
+    final shouldAdd = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.warning_amber_rounded, color: Colors.orange),
+            SizedBox(width: 8),
+            Text('Product Not Found'),
+          ],
+        ),
+        content: Text('Product with barcode "$barcode" was not found in inventory. Would you like to add it now?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton.icon(
+            onPressed: () => Navigator.pop(ctx, true),
+            icon: const Icon(Icons.add),
+            label: const Text('Add Product'),
+            style: ElevatedButton.styleFrom(backgroundColor: scheme.secondary),
+          ),
+        ],
+      ),
+    );
+
+    if (shouldAdd == true && context.mounted) {
+      await showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (ctx) => ProductFormDialog(initialBarcode: barcode),
+      );
+    }
+  }
 }
 
 class _ProductFormDialogState extends ConsumerState<ProductFormDialog> {

@@ -233,36 +233,7 @@ class _BillingScreenState extends ConsumerState<BillingScreen> {
         return;
       }
       
-      final shouldAdd = await showDialog<bool>(
-        context: context,
-        barrierDismissible: false,
-        builder: (ctx) => AlertDialog(
-          title: const Row(
-            children: [
-              Icon(Icons.warning_amber_rounded, color: Colors.orange),
-              SizedBox(width: 8),
-              Text('Product Not Found'),
-            ],
-          ),
-          content: Text('Product with barcode "$code" was not found in inventory. Would you like to add it now?'),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Cancel'),
-            ),
-            ElevatedButton.icon(
-              onPressed: () => Navigator.pop(ctx, true),
-              icon: const Icon(Icons.add),
-              label: const Text('Add Product'),
-              style: ElevatedButton.styleFrom(backgroundColor: scheme.secondary),
-            ),
-          ],
-        ),
-      );
-
-      if (shouldAdd == true && mounted) {
-        await _showAddProductDialog(barcode: code);
-      }
+      await ProductFormDialog.showProductNotFoundDialog(context, code);
     }
   }
 
@@ -407,6 +378,7 @@ class _BillingScreenState extends ConsumerState<BillingScreen> {
                               onPressed: () {
                                 _searchController.clear();
                                 setState(() => _searchTerm = '');
+                                _scrollToSearchBar();
                               },
                             ),
                           IconButton(

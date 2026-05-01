@@ -269,8 +269,8 @@ class _CartScreenState extends ConsumerState<CartScreen> {
     final cart = cartState.activeCart;
     if (cart.isEmpty) return;
 
-    final subtotal = cart.fold<double>(0, (sum, item) => sum + item.total);
-    final paymentDetails = await _showPaymentDialog(subtotal);
+    final grandTotal = ref.read(cartProvider.notifier).grandTotal;
+    final paymentDetails = await _showPaymentDialog(grandTotal);
     if (paymentDetails == null) return;
 
     setState(() => _printerMessage = 'Saving bill...');
@@ -305,8 +305,8 @@ class _CartScreenState extends ConsumerState<CartScreen> {
     final cart = cartState.activeCart;
     if (cart.isEmpty) return;
 
-    final subtotal = cart.fold<double>(0, (sum, item) => sum + item.total);
-    final paymentDetails = await _showPaymentDialog(subtotal, isPrint: true);
+    final grandTotal = ref.read(cartProvider.notifier).grandTotal;
+    final paymentDetails = await _showPaymentDialog(grandTotal, isPrint: true);
     if (paymentDetails == null) return;
 
     setState(() {
@@ -750,7 +750,7 @@ class _CartScreenState extends ConsumerState<CartScreen> {
                           const Text('Total Amount',
                               style: TextStyle(color: Colors.white54, fontSize: 13)),
                           Text(
-                            '₹${cart.fold<double>(0, (sum, item) => sum + item.total).toStringAsFixed(2)}',
+                            '₹${cartNotifier.grandTotal.toStringAsFixed(2)}',
                             style: const TextStyle(
                               color: Colors.white,
                               fontSize: 28,

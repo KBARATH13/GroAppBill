@@ -5,122 +5,91 @@ import 'dart:convert';
 import '../models/index.dart';
 import '../services/sync_service.dart';
 import 'auth_providers.dart';
+import 'shop_provider.dart';
 
-// Inventory provider - streams all products for the current shop
-final inventoryStreamProvider = StreamProvider<List<Product>>((ref) {
-  final appUser = ref.watch(appUserProvider).valueOrNull;
-  if (appUser == null) return Stream.value([]);
-  return SyncService.productsStream(appUser.adminEmail);
-});
-
-// Categories provider - manages product categories
-final categoriesProvider = StateNotifierProvider<CategoriesNotifier, List<String>>((ref) {
-  return CategoriesNotifier();
-});
+// --- Notifiers ---
 
 class CategoriesNotifier extends StateNotifier<List<String>> {
-  static const List<String> _defaultCategories = [
-    'Vegetables',
-    'Fruits',
-    'Dhall',
-    'Groceries',
-  ];
+  final Ref _ref;
 
-  CategoriesNotifier() : super(_defaultCategories) {
-    _loadCategories();
-  }
-
-  Future<void> _loadCategories() async {
-    final prefs = await SharedPreferences.getInstance();
-    final categoriesJson = prefs.getString('grocery-categories');
-    if (categoriesJson != null) {
-      try {
-        final decoded = jsonDecode(categoriesJson) as List;
-        state = decoded.cast<String>();
-      } catch (e) {
-        state = _defaultCategories;
-      }
-    }
-  }
-
-  Future<void> _saveCategories() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('grocery-categories', jsonEncode(state));
+  CategoriesNotifier(this._ref) : super([]) {
+    // Initialize state from current shop info
+    state = _ref.read(shopInfoProvider).categories;
+    
+    // Keep in sync with shopInfoProvider changes
+    _ref.listen<ShopInfo>(shopInfoProvider, (previous, next) {
+      state = next.categories;
+    });
   }
 
   void addCategory(String category) {
     if (category.trim().isEmpty) return;
     final trimmed = category.trim();
     if (!state.contains(trimmed)) {
-      state = [...state, trimmed];
-      _saveCategories();
-    }
-  }
-
-  void resetToDefaults() {
-    state = _defaultCategories;
-    _saveCategories();
-  }
-}
-
-// Units provider - manages product units
-final unitsProvider = StateNotifierProvider<UnitsNotifier, List<String>>((ref) {
-  return UnitsNotifier();
-});
-
-class UnitsNotifier extends StateNotifier<List<String>> {
-  static const List<String> _defaultUnits = ['kg', 'pc'];
-
-  UnitsNotifier() : super(_defaultUnits) {
-    _loadUnits();
-  }
-
-  Future<void> _loadUnits() async {
-    final prefs = await SharedPreferences.getInstance();
-    final unitsJson = prefs.getString('grocery-units');
-    if (unitsJson != null) {
-      try {
-        final decoded = jsonDecode(unitsJson) as List;
-        state = decoded.cast<String>();
-      } catch (e) {
-        state = _defaultUnits;
+      final shopInfo = _ref.read(shopInfoProvider);
+      final user = _ref.read(appUserProvider).valueOrNull;
+      if (user != null) {
+        final newCategories = [...shopInfo.categories, trimmed];
+        _ref.read(shopInfoProvider.notifier).updateShopInfo(
+          user.adminEmail, 
+          shopInfo.copyWith(categories: newCategories),
+        );
       }
     }
   }
 
-  Future<void> _saveUnits() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('grocery-units', jsonEncode(state));
+  void resetToDefaults() {
+    final shopInfo = _ref.read(shopInfoProvider);
+    final user = _ref.read(appUserProvider).valueOrNull;
+    if (user != null) {
+      _ref.read(shopInfoProvider.notifier).updateShopInfo(
+        user.adminEmail, 
+        shopInfo.copyWith(categories: const ['Vegetables', 'Fruits', 'Dhall', 'Groceries']),
+      );
+    }
+  }
+}
+
+class UnitsNotifier extends StateNotifier<List<String>> {
+  final Ref _ref;
+
+  UnitsNotifier(this._ref) : super([]) {
+    // Initialize state from current shop info
+    state = _ref.read(shopInfoProvider).units;
+
+    // Keep in sync with shopInfoProvider changes
+    _ref.listen<ShopInfo>(shopInfoProvider, (previous, next) {
+      state = next.units;
+    });
   }
 
   void addUnit(String unit) {
     if (unit.trim().isEmpty) return;
     final trimmed = unit.trim();
     if (!state.contains(trimmed)) {
-      state = [...state, trimmed];
-      _saveUnits();
+      final shopInfo = _ref.read(shopInfoProvider);
+      final user = _ref.read(appUserProvider).valueOrNull;
+      if (user != null) {
+        final newUnits = [...shopInfo.units, trimmed];
+        _ref.read(shopInfoProvider.notifier).updateShopInfo(
+          user.adminEmail, 
+          shopInfo.copyWith(units: newUnits),
+        );
+      }
     }
   }
 
   void resetToDefaults() {
-    state = _defaultUnits;
-    _saveUnits();
+    final shopInfo = _ref.read(shopInfoProvider);
+    final user = _ref.read(appUserProvider).valueOrNull;
+    if (user != null) {
+      _ref.read(shopInfoProvider.notifier).updateShopInfo(
+        user.adminEmail, 
+        shopInfo.copyWith(units: const ['kg', 'pc']),
+      );
+    }
   }
 }
-
-// Products provider - manages inventory
-final productsProvider = StateNotifierProvider<ProductsNotifier, List<Product>>(
-  (ref) {
-    final notifier = ProductsNotifier(ref);
-    // Automatically keep the local state in sync with the Firestore stream
-    ref.listen(inventoryStreamProvider, (previous, next) {
-      if (next is AsyncData<List<Product>>) {
-        notifier.updateFromStream(next.value);
-      }
-    });
-    return notifier;
-  },
-);
 
 class ProductsNotifier extends StateNotifier<List<Product>> {
   final Ref _ref;
@@ -214,16 +183,10 @@ class ProductsNotifier extends StateNotifier<List<Product>> {
 
   void incrementUsage(String id) {
     _invalidateCache();
-    // Update local state for immediate UI feedback.
-    // Structural changes (Add/Update/Delete) will trigger a persistent save later.
     state = state.map((p) => p.id == id ? p.copyWith(usageCount: p.usageCount + 1) : p).toList();
   }
 
-  /// Called automatically by the provider listener when the stream updates.
   void updateFromStream(List<Product> synced) {
-    // SAFETY GUARD: If the cloud sync returns an empty list but we HAVE local items,
-    // do NOT overwrite yet. This prevents a "New Shop" cloud sync from wiping
-    // out recovered/legacy local items before the user hits "Publish".
     if (synced.isEmpty && state.isNotEmpty) {
       debugPrint('Sync: Cloud is empty but local has items. Skipping wipeout.');
       return;
@@ -234,3 +197,36 @@ class ProductsNotifier extends StateNotifier<List<Product>> {
     _saveProducts();
   }
 }
+
+// --- Providers ---
+
+// Inventory provider - streams all products for the current shop
+final inventoryStreamProvider = StreamProvider<List<Product>>((ref) {
+  final appUser = ref.watch(appUserProvider).valueOrNull;
+  if (appUser == null) return Stream.value([]);
+  return SyncService.productsStream(appUser.adminEmail);
+});
+
+// Categories provider - manages product categories with cloud sync via shopInfoProvider
+final categoriesProvider = StateNotifierProvider<CategoriesNotifier, List<String>>((ref) {
+  return CategoriesNotifier(ref);
+});
+
+// Units provider - manages product units with cloud sync via shopInfoProvider
+final unitsProvider = StateNotifierProvider<UnitsNotifier, List<String>>((ref) {
+  return UnitsNotifier(ref);
+});
+
+// Products provider - manages inventory
+final productsProvider = StateNotifierProvider<ProductsNotifier, List<Product>>(
+  (ref) {
+    final notifier = ProductsNotifier(ref);
+    // Automatically keep the local state in sync with the Firestore stream
+    ref.listen(inventoryStreamProvider, (previous, next) {
+      if (next.hasValue) {
+        notifier.updateFromStream(next.requireValue);
+      }
+    });
+    return notifier;
+  },
+);

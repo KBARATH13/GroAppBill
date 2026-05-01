@@ -88,71 +88,138 @@ class _NumpadSheetState extends ConsumerState<_NumpadSheet> {
     _priceController.text = _price;
     showDialog(
       context: context,
+      barrierDismissible: false,
       builder: (context) {
         final scheme = Theme.of(context).colorScheme;
-        return AlertDialog(
-          backgroundColor: scheme.surface,
-          title: Text('Edit Price', style: TextStyle(color: scheme.onSurface)),
-          content: TextField(
-            controller: _priceController,
-            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            style: TextStyle(color: scheme.onSurface),
-            decoration: InputDecoration(
-              hintText: 'Enter new price',
-              hintStyle: TextStyle(color: scheme.onSurface.withOpacity(0.5)),
-              labelText: 'Price (₹)',
-              labelStyle: TextStyle(color: scheme.onSurface.withOpacity(0.7)),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(8),
-                borderSide: BorderSide(color: scheme.onSurface.withOpacity(0.3)),
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(8),
-                borderSide: BorderSide(color: scheme.primary),
-              ),
+        return Dialog(
+          backgroundColor: Colors.transparent,
+          insetPadding: const EdgeInsets.symmetric(horizontal: 24),
+          child: GlassContainer(
+            borderRadius: 24,
+            padding: const EdgeInsets.all(28),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(Icons.edit_note_rounded, color: scheme.primary, size: 28),
+                    const SizedBox(width: 12),
+                    const Text(
+                      'Edit Unit Price',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 22,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  'Changing price for ${widget.productName} in this cart only.',
+                  style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 13),
+                ),
+                const SizedBox(height: 32),
+                TextField(
+                  controller: _priceController,
+                  autofocus: true,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  style: const TextStyle(color: Colors.white, fontSize: 32, fontWeight: FontWeight.bold),
+                  textAlign: TextAlign.center,
+                  decoration: InputDecoration(
+                    prefixIcon: const Padding(
+                      padding: EdgeInsets.only(right: 8.0),
+                      child: Text('₹', style: TextStyle(color: Colors.white70, fontSize: 28)),
+                    ),
+                    prefixIconConstraints: const BoxConstraints(minWidth: 0, minHeight: 0),
+                    hintText: '0.00',
+                    hintStyle: TextStyle(color: Colors.white.withOpacity(0.2)),
+                    enabledBorder: UnderlineInputBorder(
+                      borderSide: BorderSide(color: Colors.white.withOpacity(0.2)),
+                    ),
+                    focusedBorder: UnderlineInputBorder(
+                      borderSide: BorderSide(color: scheme.primary, width: 2),
+                    ),
+                    contentPadding: const EdgeInsets.symmetric(vertical: 16),
+                  ),
+                ),
+                const SizedBox(height: 40),
+                Row(
+                  children: [
+                    Expanded(
+                      child: GestureDetector(
+                        onTap: () => Navigator.pop(context),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.05),
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                          child: const Center(
+                            child: Text(
+                              'Cancel',
+                              style: TextStyle(color: Colors.white70, fontWeight: FontWeight.bold, fontSize: 16),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: GestureDetector(
+                        onTap: () async {
+                          final newPrice = double.tryParse(_priceController.text);
+                          if (newPrice != null && newPrice > 0) {
+                            setState(() {
+                              _price = newPrice.toStringAsFixed(2);
+                            });
+                            if (mounted) {
+                              Navigator.pop(context);
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: const Text('✓ Unit price updated'),
+                                  backgroundColor: scheme.secondary,
+                                  duration: const Duration(seconds: 1),
+                                ),
+                              );
+                            }
+                          } else {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Please enter a valid price'),
+                                backgroundColor: Color(0xFFFF6B6B),
+                              ),
+                            );
+                          }
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          decoration: BoxDecoration(
+                            color: scheme.primary.withOpacity(0.8),
+                            borderRadius: BorderRadius.circular(16),
+                            boxShadow: [
+                              BoxShadow(
+                                color: scheme.primary.withOpacity(0.3),
+                                blurRadius: 10,
+                                offset: const Offset(0, 4),
+                              ),
+                            ],
+                          ),
+                          child: const Center(
+                            child: Text(
+                              'Update',
+                              style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
             ),
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: Text('Cancel', style: TextStyle(color: scheme.onSurface.withOpacity(0.7))),
-            ),
-            TextButton(
-              onPressed: () async {
-                final newPrice = double.tryParse(_priceController.text);
-                if (newPrice != null && newPrice > 0) {
-                  // Update local state for immediate feedback in the sheet
-                  setState(() {
-                    _price = newPrice.toStringAsFixed(2);
-                  });
-
-                  // If we have the productId, update the actual product in the provider
-                  if (widget.productId != null) {
-                    // Temporarily modify for Cart, do NOT permanently modify inventory here
-                  }
-
-                  if (mounted) {
-                    Navigator.pop(context);
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: const Text('Price updated successfully'),
-                        backgroundColor: scheme.tertiary,
-                        duration: const Duration(seconds: 1),
-                      ),
-                    );
-                  }
-                } else {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Please enter a valid price'),
-                      backgroundColor: Color(0xFFFF6B6B),
-                    ),
-                  );
-                }
-              },
-              child: Text('Update', style: TextStyle(color: scheme.primary)),
-            ),
-          ],
         );
       },
     );
@@ -374,52 +441,20 @@ class _NumpadSheetState extends ConsumerState<_NumpadSheet> {
             // Number grid
             ...keys.map((row) {
               return Padding(
-                padding: const EdgeInsets.only(bottom: 8),
+                padding: const EdgeInsets.only(bottom: 12),
                 child: Row(
                   children: row.map((key) {
                     final isClear = key == 'C';
                     final isDecimal = key == '.';
                     return Expanded(
                       child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 4),
-                        child: GestureDetector(
-                          onTapDown: (details) {
-                            _tap(key);
-                          },
-                          child: Container(
-                            height: 64,
-                            decoration: BoxDecoration(
-                              color: isClear
-                                  ? Colors.red.withOpacity(0.1)
-                                  : (isDecimal ? Colors.amber.withOpacity(0.1) : Colors.white.withOpacity(0.06)),
-                              borderRadius: BorderRadius.circular(14),
-                              border: Border.all(
-                                color: isClear
-                                    ? Colors.red.withOpacity(0.3)
-                                    : (isDecimal ? Colors.amber.withOpacity(0.3) : Colors.white.withOpacity(0.15)),
-                                width: 2,
-                              ),
-                            ),
-                            child: Material(
-                              color: Colors.transparent,
-                              child: InkWell(
-                                onTap: () => _tap(key),
-                                borderRadius: BorderRadius.circular(14),
-                                highlightColor: Colors.white.withOpacity(0.1),
-                                splashColor: Colors.white.withOpacity(0.15),
-                                child: Center(
-                                  child: Text(
-                                    key,
-                                    style: TextStyle(
-                                      fontSize: 26,
-                                      fontWeight: FontWeight.bold,
-                                      color: isClear ? Colors.redAccent : (isDecimal ? Colors.amber : Colors.white),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
+                        padding: const EdgeInsets.symmetric(horizontal: 6),
+                        child: _NumpadButton(
+                          label: key,
+                          color: isClear
+                              ? Colors.redAccent
+                              : (isDecimal ? Colors.amber : Colors.white),
+                          onTap: () => _tap(key),
                         ),
                       ),
                     );
@@ -429,97 +464,106 @@ class _NumpadSheetState extends ConsumerState<_NumpadSheet> {
             }).toList(),
 
             // Backspace + Done row
-            const SizedBox(height: 8),
+            const SizedBox(height: 4),
             Row(
               children: [
                 Expanded(
                   child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 4),
-                    child: GestureDetector(
-                      onTapDown: (details) {
-                        _tap('⌫');
-                      },
-                      child: Container(
-                        height: 64,
-                        decoration: BoxDecoration(
-                          color: Colors.orange.withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(14),
-                          border: Border.all(
-                            color: Colors.orange.withOpacity(0.3),
-                            width: 2,
-                          ),
-                        ),
-                        child: Material(
-                          color: Colors.transparent,
-                          child: InkWell(
-                            onTap: () => _tap('⌫'),
-                            borderRadius: BorderRadius.circular(14),
-                            highlightColor: Colors.orange.withOpacity(0.2),
-                            splashColor: Colors.orange.withOpacity(0.25),
-                            child: const Center(
-                              child: Icon(Icons.backspace_outlined, size: 28, color: Colors.orangeAccent),
-                            ),
-                          ),
-                        ),
-                      ),
+                    padding: const EdgeInsets.symmetric(horizontal: 6),
+                    child: _NumpadButton(
+                      icon: Icons.backspace_outlined,
+                      color: Colors.orangeAccent,
+                      onTap: () => _tap('⌫'),
                     ),
                   ),
                 ),
                 Expanded(
                   flex: 2,
                   child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 4),
-                    child: GestureDetector(
-                      onTapDown: (details) {
-                        _done();
-                      },
-                      child: Container(
-                        height: 64,
-                        decoration: BoxDecoration(
-                          color: Colors.green.withOpacity(0.9),
-                          borderRadius: BorderRadius.circular(14),
-                          border: Border.all(
-                            color: Colors.green.withOpacity(0.5),
-                            width: 2,
-                          ),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.green.withOpacity(0.4),
-                              blurRadius: 12,
-                              offset: const Offset(0, 4),
-                            ),
-                          ],
-                        ),
-                        child: Material(
-                          color: Colors.transparent,
-                          child: InkWell(
-                            onTap: _done,
-                            borderRadius: BorderRadius.circular(14),
-                            highlightColor: Colors.white.withOpacity(0.15),
-                            splashColor: Colors.white.withOpacity(0.2),
-                            child: const Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Text(
-                                  'DONE',
-                                  style: TextStyle(
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.white,
-                                    letterSpacing: 1,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
+                    padding: const EdgeInsets.symmetric(horizontal: 6),
+                    child: _NumpadButton(
+                      label: 'DONE',
+                      color: Colors.greenAccent,
+                      isPrimary: true,
+                      onTap: _done,
                     ),
                   ),
                 ),
               ],
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _NumpadButton extends StatefulWidget {
+  final String? label;
+  final IconData? icon;
+  final Color color;
+  final VoidCallback onTap;
+  final bool isPrimary;
+
+  const _NumpadButton({
+    this.label,
+    this.icon,
+    required this.color,
+    required this.onTap,
+    this.isPrimary = false,
+  });
+
+  @override
+  State<_NumpadButton> createState() => _NumpadButtonState();
+}
+
+class _NumpadButtonState extends State<_NumpadButton> {
+  bool _isPressed = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTapDown: (_) {
+        setState(() => _isPressed = true);
+        widget.onTap();
+      },
+      onTapUp: (_) => setState(() => _isPressed = false),
+      onTapCancel: () => setState(() => _isPressed = false),
+      child: AnimatedScale(
+        scale: _isPressed ? 0.96 : 1.0,
+        duration: const Duration(milliseconds: 60),
+        child: Container(
+          height: 68,
+          decoration: BoxDecoration(
+            color: widget.isPrimary 
+                ? (widget.color.withOpacity(_isPressed ? 0.9 : 0.8))
+                : widget.color.withOpacity(_isPressed ? 0.15 : 0.08),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: widget.color.withOpacity(_isPressed ? 0.4 : 0.2),
+              width: _isPressed ? 2.5 : 1.5,
+            ),
+            boxShadow: widget.isPrimary && !_isPressed ? [
+              BoxShadow(
+                color: widget.color.withOpacity(0.3),
+                blurRadius: 10,
+                offset: const Offset(0, 4),
+              )
+            ] : null,
+          ),
+          child: Center(
+            child: widget.icon != null
+                ? Icon(widget.icon, color: widget.color, size: 28)
+                : Text(
+                    widget.label!,
+                    style: TextStyle(
+                      fontSize: widget.label == 'DONE' ? 18 : 28,
+                      fontWeight: FontWeight.bold,
+                      color: widget.isPrimary ? Colors.black : widget.color,
+                      letterSpacing: widget.label == 'DONE' ? 1.5 : 0,
+                    ),
+                  ),
+          ),
         ),
       ),
     );

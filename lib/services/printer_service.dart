@@ -230,11 +230,17 @@ class PrinterService {
 
     // === TOTALS SECTION ===
     bytes.addAll(_stringToBytes('------------------------------------------------'));
-    bytes.addAll([CR, LF, LF]);
+    bytes.addAll([CR, LF]);
     bytes.addAll([ESC, 0x61, 0x02]); // Right alignment
+    bytes.addAll(_stringToBytes('Total Items: ${bill.cartItems.length}'));
+    bytes.addAll([CR, LF, LF]);
+
+    bytes.addAll([ESC, 0x61, 0x02]); // Right alignment
+    bytes.addAll([GS, 0x21, 0x01]); // Select double height size
     bytes.addAll([ESC, 0x45, 0x01]); // Bold ON
     bytes.addAll(_stringToBytes('Grand Total: Rs.${bill.grandTotal.toStringAsFixed(2)}'));
     bytes.addAll([ESC, 0x45, 0x00]); // Bold OFF
+    bytes.addAll([GS, 0x21, 0x00]); // Reset character size to normal
     bytes.addAll([CR, LF]);
 
     bytes.addAll([ESC, 0x61, 0x00]); // Left alignment
