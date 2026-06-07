@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/index.dart';
 import '../providers/app_providers.dart';
@@ -532,7 +531,7 @@ class _AdminScreenState extends ConsumerState<AdminScreen> {
                 DropdownButtonFormField<String>(
                   dropdownColor: Colors.blueGrey[900],
                   style: const TextStyle(color: Colors.white),
-                  value: _sortBy,
+                  initialValue: _sortBy,
                   decoration: InputDecoration(
                     labelText: 'Sort By',
                     labelStyle: const TextStyle(color: Colors.white70),

@@ -211,7 +211,7 @@ class PrinterService {
     // === ITEMS SECTION ===
     bytes.addAll(_stringToBytes('------------------------------------------------'));
     bytes.addAll([CR, LF]);
-    bytes.addAll(_stringToBytes('Item             Price        Qty     Total'));
+    bytes.addAll(_stringToBytes('Item             Price      Qty       Total'));
     bytes.addAll([CR, LF]);
     bytes.addAll(_stringToBytes('------------------------------------------------'));
     bytes.addAll([CR, LF]);
@@ -278,9 +278,9 @@ class PrinterService {
   static String _formatItemLine(String name, double price, double quantity, String unit, double total) {
     final nameStr = name.length > 19 ? name.substring(0, 19) : name;
     final priceStr = 'Rs.${price.toStringAsFixed(2)}';
-    String qtyFormatted = (quantity == quantity.toInt()) ? quantity.toInt().toString() : quantity.toStringAsFixed(2);
+    String qtyFormatted = (quantity == quantity.toInt()) ? quantity.toInt().toString() : quantity.toStringAsFixed(3);
     final qtyStr = '$qtyFormatted$unit';
     final totalStr = 'Rs.${total.toStringAsFixed(2)}';
-    return nameStr.padRight(17) + priceStr.padRight(13) + qtyStr.padRight(8) + totalStr.padRight(5);
+    return nameStr.padRight(17) + priceStr.padRight(11) + qtyStr.padRight(10) + totalStr.padRight(5);
   }
 }

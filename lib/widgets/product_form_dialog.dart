@@ -265,7 +265,7 @@ class _ProductFormDialogState extends ConsumerState<ProductFormDialog> {
                                   ? DropdownButtonFormField<String>(
                                       dropdownColor: Colors.blueGrey[900],
                                       style: const TextStyle(color: Colors.white),
-                                      value: _selectedUnit,
+                                      initialValue: _selectedUnit,
                                       onChanged: (v) {
                                         if (v == 'ADD_NEW') {
                                           setState(() => _isCustomUnit = true);
@@ -333,7 +333,7 @@ class _ProductFormDialogState extends ConsumerState<ProductFormDialog> {
                       DropdownButtonFormField<String>(
                         dropdownColor: Colors.blueGrey[900],
                         style: const TextStyle(color: Colors.white),
-                        value: _selectedCategory,
+                        initialValue: _selectedCategory,
                         onChanged: (v) {
                           if (v == 'ADD_NEW') {
                             setState(() => _isCustomCategory = true);

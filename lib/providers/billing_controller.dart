@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import '../models/bill.dart';
@@ -24,26 +25,27 @@ class BillingController {
       final dateStr = cartState.editingBillDate ?? DateFormat('dd/MM/yyyy').format(now);
       final timeStr = DateFormat('hh:mm a').format(now);
       
+      final operatorName = ref.read(userProvider) ?? 'NA';
+      
       String bNumber;
       if (cartState.editingBillId != null) {
         bNumber = cartState.editingBillId!;
       } else {
-        final billCount = await HistoryService.getDailyBillCount();
+        final billCount = await HistoryService.getDailyBillCount(operatorName);
         bNumber = 'B-$billCount';
       }
 
-      final operatorName = ref.read(userProvider) ?? 'NA';
       final shopInfo = ref.read(shopInfoProvider);
-      final delivery = ref.read(deliveryInfoProvider);
+      final deliveryInfo = ref.read(deliveryInfoProvider);
 
       final bill = Bill(
         billNumber: bNumber,
         date: dateStr,
         time: timeStr,
         operatorName: operatorName,
-        customerType: delivery.customerType,
-        apartmentName: delivery.customerType == 'Home Delivery' ? delivery.apartmentName : null,
-        blockAndDoor: delivery.customerType == 'Home Delivery' ? delivery.blockAndDoor : null,
+        customerType: deliveryInfo.customerType,
+        apartmentName: deliveryInfo.customerType == 'Home Delivery' ? deliveryInfo.apartmentName : null,
+        blockAndDoor: deliveryInfo.customerType == 'Home Delivery' ? deliveryInfo.blockAndDoor : null,
         cartItems: cart,
         paymentMode: paymentDetails['paymentMode'] as String,
         cashAmount: paymentDetails['cashAmount'] as double,
@@ -53,6 +55,7 @@ class BillingController {
         shopPhone: shopInfo.phone,
         billGreeting: shopInfo.greeting,
         billExtraInfo: shopInfo.extraInfo,
+        originalOperator: cartState.editingOriginalOperator ?? operatorName,
         firestoreId: cartState.editingFirestoreId,
       );
 

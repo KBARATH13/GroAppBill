@@ -11,6 +11,7 @@ import 'admin_screen.dart';
 import 'settings_screen.dart';
 import 'history_screen.dart';
 import 'calculator_screen.dart';
+import 'delivery_screen.dart';
 
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
@@ -20,7 +21,7 @@ class HomeScreen extends ConsumerStatefulWidget {
 }
 
 class _HomeScreenState extends ConsumerState<HomeScreen> {
-  bool _hasPendingSync = false;
+  final bool _hasPendingSync = false;
   bool _adminHasLocalChanges = false;
 
   Future<bool> _promptPublishBeforeSwitch() async {
@@ -88,7 +89,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final selectedIndex = ref.read(navigationProvider);
     if (selectedIndex == index) return;
 
-    if (selectedIndex == 1 && index == 0) {
+    if (selectedIndex == 2 && index == 0) {
       final canLeave = await _promptPublishBeforeSwitch();
       if (!canLeave) return;
     }
@@ -125,34 +126,33 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   final cart = ref.watch(cartProvider).carts[
                       ref.watch(cartProvider).activeIndex];
                   return IconButton(
-                    icon: Stack(
+                    icon: Row(
+                      mainAxisSize: MainAxisSize.min,
                       children: [
                         const Icon(Icons.shopping_cart),
-                        if (cart.isNotEmpty)
-                          Positioned(
-                            right: 0,
-                            top: 0,
-                            child: Container(
-                              padding: const EdgeInsets.all(2),
-                              decoration: BoxDecoration(
-                                color: Colors.red,
-                                borderRadius: BorderRadius.circular(8),
+                        if (cart.isNotEmpty) ...[
+                          const SizedBox(width: 6),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: Colors.red,
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            constraints: const BoxConstraints(
+                              minWidth: 18,
+                              minHeight: 18,
+                            ),
+                            child: Text(
+                              '${cart.length}',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
                               ),
-                              constraints: const BoxConstraints(
-                                minWidth: 16,
-                                minHeight: 16,
-                              ),
-                              child: Text(
-                                '${cart.length}',
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                                textAlign: TextAlign.center,
-                              ),
+                              textAlign: TextAlign.center,
                             ),
                           ),
+                        ],
                       ],
                     ),
                     onPressed: () => _showCartBottomSheet(context, ref),
@@ -190,13 +190,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           index: selectedIndex,
           children: [
             const BillingScreen(),
+            const DeliveryManagerScreen(),
             if (ref.watch(appUserProvider).valueOrNull?.isAdmin == true)
               AdminScreen(
                 hasPendingSync: false,
                 onSync: () async {},
                 onChangeMade: () => setState(() => _adminHasLocalChanges = true),
-                onPublishComplete: () =>
-                    setState(() => _adminHasLocalChanges = false),
+                onPublishComplete: () => setState(() => _adminHasLocalChanges = false),
               )
             else
               const Center(child: Text('Admin Access Required')),
@@ -218,6 +218,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     isSelected: selectedIndex == 0,
                     onTap: () => _onTabSelected(0),
                   ),
+                  _NavBarItem(
+                    icon: Icons.local_shipping,
+                    label: 'Delivery',
+                    isSelected: selectedIndex == 1,
+                    onTap: () => _onTabSelected(1),
+                  ),
+                  // Inventory (Admin) Tab
                   if (ref.watch(appUserProvider).valueOrNull?.isAdmin == true)
                     Builder(
                       builder: (context) {
@@ -225,12 +232,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                         return _NavBarItem(
                           icon: Icons.inventory_2,
                           label: 'Inventory',
-                          isSelected: selectedIndex == 1,
+                          isSelected: selectedIndex == 2,
                           hasBadge: _hasPendingSync || _adminHasLocalChanges,
                           badgeColor: _adminHasLocalChanges
                               ? scheme.error
                               : scheme.tertiary,
-                          onTap: () => _onTabSelected(1),
+                          onTap: () => _onTabSelected(2),
                         );
                       },
                     ),

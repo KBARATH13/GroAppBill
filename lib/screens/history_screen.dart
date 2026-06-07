@@ -140,11 +140,23 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
             loading: () => const Center(child: CircularProgressIndicator(color: Colors.white)),
             error: (err, stack) => Center(child: Text('Error: $err', style: const TextStyle(color: Colors.red))),
             data: (history) {
+              // 1. Extract Unique Operators from ALL 3 days
+              final allOperators = <String>{};
+              for (final key in _windowKeys) {
+                final dayBills = history[key] ?? [];
+                for (final b in dayBills) {
+                  allOperators.add(b.operatorName);
+                  if (b.originalOperator != null) allOperators.add(b.originalOperator!);
+                }
+              }
+              final operatorList = allOperators.toList()..sort();
+
               final rawBills = history[_selectedDateKey] ?? [];
               
               // Apply Filters
               final query = _searchController.text.trim();
               final filteredBills = rawBills.where((b) {
+                // ... (filtering logic unchanged)
                 // 1. Text Filter (Bill # or Price)
                 bool matchesSearch = true;
                 if (query.isNotEmpty) {
@@ -163,23 +175,14 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                 return matchesSearch && matchesTime && matchesPayment;
               }).toList();
               
-              // Sort descending based strictly on time
+              // ... (sorting logic unchanged)
               filteredBills.sort((a, b) {
                 final aMins = _timeStrToMinutes(a.time);
                 final bMins = _timeStrToMinutes(b.time);
-                if (aMins != bMins) {
-                  return bMins.compareTo(aMins);
-                }
-
-                // Tie-breaker: If logged in the exact same minute, use the bill ID
-                int aId = 0;
-                int bId = 0;
-                if (a.billNumber.startsWith('B-')) {
-                   aId = int.tryParse(a.billNumber.substring(2)) ?? 0;
-                }
-                if (b.billNumber.startsWith('B-')) {
-                   bId = int.tryParse(b.billNumber.substring(2)) ?? 0;
-                }
+                if (aMins != bMins) return bMins.compareTo(aMins);
+                int aId = 0, bId = 0;
+                if (a.billNumber.startsWith('B-')) aId = int.tryParse(a.billNumber.substring(2)) ?? 0;
+                if (b.billNumber.startsWith('B-')) bId = int.tryParse(b.billNumber.substring(2)) ?? 0;
                 return bId.compareTo(aId);
               });
 
@@ -192,6 +195,35 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
+                        // ==== Operator Tally Section ====
+                        Autocomplete<String>(
+                          optionsBuilder: (TextEditingValue textEditingValue) {
+                            if (textEditingValue.text.isEmpty) return const Iterable<String>.empty();
+                            return operatorList.where((String option) {
+                              return option.toLowerCase().contains(textEditingValue.text.toLowerCase());
+                            });
+                          },
+                          onSelected: (String selection) {
+                            _showOperatorTallyDialog(context, selection, history);
+                          },
+                          fieldViewBuilder: (context, controller, focusNode, onFieldSubmitted) {
+                            return TextField(
+                              controller: controller,
+                              focusNode: focusNode,
+                              style: const TextStyle(color: Colors.white, fontSize: 14),
+                              decoration: InputDecoration(
+                                hintText: 'Search Operator for 3-Day Tally...',
+                                hintStyle: const TextStyle(color: Colors.white38, fontSize: 13),
+                                prefixIcon: const Icon(Icons.person_search, color: Colors.blueAccent, size: 20),
+                                filled: true,
+                                fillColor: Colors.blueAccent.withOpacity(0.1),
+                                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: Colors.blueAccent.withOpacity(0.3))),
+                                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                              ),
+                            );
+                          },
+                        ),
+                        const SizedBox(height: 12),
                         Row(
                           children: [
                             Expanded(
@@ -377,8 +409,14 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                                     title: Text(
                                       isCalculation
                                           ? '${bill.billNumber} 📊 • ${bill.operatorName}'
-                                          : '${bill.billNumber} — ${bill.operatorName}',
+                                          : '${bill.billNumber} — ${
+                                              (bill.isEdited && bill.originalOperator != null && bill.originalOperator != bill.operatorName)
+                                              ? "${bill.originalOperator} / Edited by ${bill.operatorName}"
+                                              : bill.operatorName
+                                            }',
                                       style: const TextStyle(fontWeight: FontWeight.w600, color: Colors.white),
+                                      overflow: TextOverflow.ellipsis,
+                                      maxLines: 1,
                                     ),
                                     subtitle: Column(
                                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -427,6 +465,25 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                                               fontWeight: FontWeight.w500,
                                             ),
                                           ),
+                                        if (!isCalculation && bill.isEdited)
+                                          Container(
+                                            margin: const EdgeInsets.only(top: 4),
+                                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                            decoration: BoxDecoration(
+                                              color: Colors.amber.withOpacity(0.15),
+                                              borderRadius: BorderRadius.circular(6),
+                                              border: Border.all(color: Colors.amber.withOpacity(0.5)),
+                                            ),
+                                            child: const Text(
+                                              '✎ Edited',
+                                              style: TextStyle(
+                                                fontSize: 9,
+                                                color: Colors.amber,
+                                                fontWeight: FontWeight.bold,
+                                                letterSpacing: 0.3,
+                                              ),
+                                            ),
+                                          ),
                                       ],
                                     ),
                                     isThreeLine: true,
@@ -471,9 +528,36 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text(
-                      isCalculation ? '${bill.billNumber} 📊 Calculation' : 'Bill ${bill.billNumber}',
-                      style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.white),
+                    Expanded(
+                      child: Row(
+                        children: [
+                          Flexible(
+                            child: Text(
+                              isCalculation ? '${bill.billNumber} 📊 Calculation' : 'Bill ${bill.billNumber}',
+                              style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.white),
+                            ),
+                          ),
+                          if (!isCalculation && bill.isEdited) ...[
+                            const SizedBox(width: 8),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                              decoration: BoxDecoration(
+                                color: Colors.amber.withOpacity(0.15),
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(color: Colors.amber.withOpacity(0.5)),
+                              ),
+                              child: const Text(
+                                '✎ Edited',
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  color: Colors.amber,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
                     ),
                     IconButton(
                       icon: const Icon(Icons.close, color: Colors.white70),
@@ -482,7 +566,11 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                   ],
                 ),
                 Text(
-                  '${bill.date}  ${bill.time}  · ${bill.operatorName}',
+                  '${bill.date}  ${bill.time}  · ${
+                    (bill.isEdited && bill.originalOperator != null && bill.originalOperator != bill.operatorName)
+                    ? "${bill.originalOperator} / Edited by ${bill.operatorName}"
+                    : bill.operatorName
+                  }',
                   style: const TextStyle(color: Colors.white70),
                 ),
                 if (isCalculation)
@@ -717,7 +805,7 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
     
     buffer.writeln('━━━━━━━━━━━━━━━━━━━━━━━━');
     buffer.writeln('  *${shop.shopName.toUpperCase()}*');
-    if (shop.address.isNotEmpty) buffer.writeln('${shop.address}');
+    if (shop.address.isNotEmpty) buffer.writeln(shop.address);
     if (shop.phone.isNotEmpty) buffer.writeln('PH: ${shop.phone}');
     buffer.writeln('━━━━━━━━━━━━━━━━━━━━━━━━');
     buffer.writeln('Bill #: ${bill.billNumber}');
@@ -741,8 +829,8 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
     buffer.writeln('*Grand Total: ₹${bill.grandTotal.toStringAsFixed(2)}*');
     buffer.writeln('Payment: ${bill.paymentMode}');
     buffer.writeln('━━━━━━━━━━━━━━━━━━━━━━━━');
-    buffer.writeln('${shop.greeting}');
-    if (shop.extraInfo.isNotEmpty) buffer.writeln('${shop.extraInfo}');
+    buffer.writeln(shop.greeting);
+    if (shop.extraInfo.isNotEmpty) buffer.writeln(shop.extraInfo);
     
     Share.share(buffer.toString(), subject: 'Bill Receipt ${bill.billNumber}');
   }
@@ -762,6 +850,9 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
       // Reconstruct Bill object from BillingHistoryRecord
       final cartItems = billRecord.itemsJson.map((item) => CartItem.fromJson(item)).toList();
       
+      // Read current shop info so the header prints correctly on reprint
+      final shop = ref.read(shopInfoProvider);
+
       final bill = Bill(
         billNumber: billRecord.billNumber,
         date: billRecord.date,
@@ -775,6 +866,11 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
         apartmentName: billRecord.apartmentName,
         blockAndDoor: billRecord.blockAndDoor,
         firestoreId: billRecord.firestoreId,
+        shopName: shop.shopName,
+        shopAddress: shop.address,
+        shopPhone: shop.phone,
+        billGreeting: shop.greeting,
+        billExtraInfo: shop.extraInfo,
       );
 
       // Send to printer
@@ -829,6 +925,7 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
       upiAmount: billRecord.upiAmount,
       apartmentName: billRecord.apartmentName,
       blockAndDoor: billRecord.blockAndDoor,
+      originalOperator: billRecord.originalOperator ?? billRecord.operatorName,
       firestoreId: billRecord.firestoreId,
     );
 
@@ -868,6 +965,61 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
           initialBillId: billRecord.billNumber,
           initialFirestoreId: billRecord.firestoreId,
         ),
+      ),
+    );
+  }
+
+  void _showOperatorTallyDialog(BuildContext context, String operatorName, Map<String, List<BillingHistoryRecord>> history) {
+    final tally = <String, double>{};
+    for (final key in _windowKeys) {
+      final bills = history[key] ?? [];
+      final total = bills
+          .where((b) => b.operatorName == operatorName || b.originalOperator == operatorName)
+          .fold<double>(0, (sum, b) => sum + b.grandTotal);
+      tally[key] = total;
+    }
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF1E1E1E),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+          side: BorderSide(color: Colors.blueAccent.withOpacity(0.3)),
+        ),
+        title: Row(
+          children: [
+            const Icon(Icons.person, color: Colors.blueAccent),
+            const SizedBox(width: 12),
+            Expanded(child: Text(operatorName, style: const TextStyle(color: Colors.white))),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: _windowKeys.map((key) {
+            final label = _labelFor(key).split('  ')[0];
+            final amount = tally[key] ?? 0;
+            return Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8.0),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(label, style: const TextStyle(color: Colors.white70)),
+                  Text(
+                    'RS ${amount.toStringAsFixed(0)}',
+                    style: const TextStyle(color: Colors.blueAccent, fontWeight: FontWeight.bold, fontSize: 16),
+                  ),
+                ],
+              ),
+            );
+          }).toList(),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('CLOSE', style: TextStyle(color: Colors.white54)),
+          ),
+        ],
       ),
     );
   }

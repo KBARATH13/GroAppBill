@@ -10,6 +10,7 @@ class CartState {
   final String? editingBillId; // The ID of the bill currently being edited
   final String? editingBillDate; // The date of the bill currently being edited
   final String? editingFirestoreId; // The Firestore document ID of the bill currently being edited
+  final String? editingOriginalOperator; // The original operator of the bill currently being edited
   
   CartState({
     required this.activeIndex, 
@@ -17,6 +18,7 @@ class CartState {
     this.editingBillId,
     this.editingBillDate,
     this.editingFirestoreId,
+    this.editingOriginalOperator,
   });
   
   List<CartItem> get activeCart => carts[activeIndex];
@@ -27,6 +29,7 @@ class CartState {
     String? editingBillId,
     String? editingBillDate,
     String? editingFirestoreId,
+    String? editingOriginalOperator,
     bool clearEditing = false,
   }) {
     return CartState(
@@ -35,6 +38,7 @@ class CartState {
       editingBillId: clearEditing ? null : (editingBillId ?? this.editingBillId),
       editingBillDate: clearEditing ? null : (editingBillDate ?? this.editingBillDate),
       editingFirestoreId: clearEditing ? null : (editingFirestoreId ?? this.editingFirestoreId),
+      editingOriginalOperator: clearEditing ? null : (editingOriginalOperator ?? this.editingOriginalOperator),
     );
   }
 }
@@ -132,8 +136,9 @@ class CartNotifier extends StateNotifier<CartState> {
       targetIndex = 1; // cart 2
     } else {
       // Fallback: first empty
-      if (c1Empty) targetIndex = 0;
-      else if (c2Empty) targetIndex = 1;
+      if (c1Empty) {
+        targetIndex = 0;
+      } else if (c2Empty) targetIndex = 1;
       else if (c3Empty) targetIndex = 2;
       else targetIndex = 0; // overwrite 1 if everything full
     }
@@ -147,6 +152,7 @@ class CartNotifier extends StateNotifier<CartState> {
       editingBillId: bill.billNumber,
       editingBillDate: bill.date,
       editingFirestoreId: bill.firestoreId,
+      editingOriginalOperator: bill.originalOperator ?? bill.operatorName,
     );
     _saveCart();
   }

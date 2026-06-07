@@ -1,22 +1,18 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'screens/index.dart';
-import 'screens/login_screen.dart';
 import 'services/auth_service.dart';
-import 'providers/app_providers.dart';
 import 'widgets/glass_container.dart';
 import 'widgets/vibrant_background.dart';
+import 'providers/app_providers.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp();
 
-  // Enable Firestore offline persistence so Firestore reads are served from
-  // the local device cache on repeat launches — eliminating the network
-  // round-trip that causes slow startup.
+  // Enable Firestore offline persistence
   FirebaseFirestore.instance.settings = const Settings(
     persistenceEnabled: true,
     cacheSizeBytes: Settings.CACHE_SIZE_UNLIMITED,
@@ -24,6 +20,7 @@ void main() async {
 
   runApp(const ProviderScope(child: MyApp()));
 }
+
 
 class MyApp extends ConsumerWidget {
   const MyApp({super.key});

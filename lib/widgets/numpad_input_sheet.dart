@@ -237,7 +237,7 @@ class _NumpadSheetState extends ConsumerState<_NumpadSheet> {
       }
     } else if (key == '.') {
       if (!newValue.contains('.')) {
-        newValue = newValue.isEmpty ? '0.' : newValue + '.';
+        newValue = newValue.isEmpty ? '0.' : '$newValue.';
       }
     } else if (key == 'C') {
       newValue = '';
@@ -461,7 +461,7 @@ class _NumpadSheetState extends ConsumerState<_NumpadSheet> {
                   }).toList(),
                 ),
               );
-            }).toList(),
+            }),
 
             // Backspace + Done row
             const SizedBox(height: 4),

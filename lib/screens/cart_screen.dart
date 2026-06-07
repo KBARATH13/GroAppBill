@@ -134,7 +134,7 @@ class _CartScreenState extends ConsumerState<CartScreen> {
 
                   // Payment mode dropdown
                   DropdownButtonFormField<String>(
-                    value: paymentMode,
+                    initialValue: paymentMode,
                     decoration: const InputDecoration(
                       labelText: 'Payment Mode',
                       border: OutlineInputBorder(),
@@ -352,7 +352,7 @@ class _CartScreenState extends ConsumerState<CartScreen> {
     
     buffer.writeln('━━━━━━━━━━━━━━━━━━━━━━━━');
     buffer.writeln('  *${shop.shopName.toUpperCase()}*');
-    if (shop.address.isNotEmpty) buffer.writeln('${shop.address}');
+    if (shop.address.isNotEmpty) buffer.writeln(shop.address);
     if (shop.phone.isNotEmpty) buffer.writeln('PH: ${shop.phone}');
     buffer.writeln('━━━━━━━━━━━━━━━━━━━━━━━━');
     buffer.writeln('Bill #: ${bill.billNumber}');
@@ -376,8 +376,8 @@ class _CartScreenState extends ConsumerState<CartScreen> {
     buffer.writeln('*Grand Total: ₹${bill.grandTotal.toStringAsFixed(2)}*');
     buffer.writeln('Payment: ${bill.paymentMode}');
     buffer.writeln('━━━━━━━━━━━━━━━━━━━━━━━━');
-    buffer.writeln('${shop.greeting}');
-    if (shop.extraInfo.isNotEmpty) buffer.writeln('${shop.extraInfo}');
+    buffer.writeln(shop.greeting);
+    if (shop.extraInfo.isNotEmpty) buffer.writeln(shop.extraInfo);
 
     showDialog(
       context: context,
@@ -633,10 +633,13 @@ class _CartScreenState extends ConsumerState<CartScreen> {
                                             children: [
                                               _IconButton(
                                                 icon: Icons.remove,
-                                                onTap: () => cartNotifier
-                                                    .updateItemQuantity(
-                                                        index,
-                                                        item.quantity - 1),
+                                                isDisabled: item.quantity <= 1,
+                                                onTap: item.quantity <= 1
+                                                    ? () {}
+                                                    : () => cartNotifier
+                                                        .updateItemQuantity(
+                                                            index,
+                                                            item.quantity - 1),
                                               ),
                                               const SizedBox(width: 12),
                                               Text(
@@ -931,12 +934,14 @@ class _IconButton extends StatelessWidget {
   final VoidCallback onTap;
   final Color? color;
   final Color? iconColor;
+  final bool isDisabled;
 
   const _IconButton({
     required this.icon,
     required this.onTap,
     this.color,
     this.iconColor,
+    this.isDisabled = false,
   });
 
   @override
@@ -944,12 +949,20 @@ class _IconButton extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.all(8),
+        padding: const EdgeInsets.all(11),
         decoration: BoxDecoration(
-          color: color ?? Colors.white.withOpacity(0.1),
+          color: isDisabled
+              ? Colors.white.withOpacity(0.04)
+              : (color ?? Colors.white.withOpacity(0.1)),
           borderRadius: BorderRadius.circular(10),
         ),
-        child: Icon(icon, color: iconColor ?? Colors.white70, size: 20),
+        child: Icon(
+          icon,
+          color: isDisabled
+              ? Colors.white24
+              : (iconColor ?? Colors.white70),
+          size: 22,
+        ),
       ),
     );
   }

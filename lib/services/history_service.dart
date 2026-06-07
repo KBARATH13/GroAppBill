@@ -29,6 +29,8 @@ class HistoryService {
       blockAndDoor: bill.blockAndDoor,
       itemsJson: bill.cartItems.map((i) => i.toJson()).toList(),
       firestoreId: bill.firestoreId,
+      originalOperator: bill.originalOperator ?? bill.operatorName,
+      isEdited: replaceBillId != null, // Mark as edited when overwriting an existing bill
     );
 
     if (replaceBillId != null) {
@@ -83,7 +85,7 @@ class HistoryService {
     
     final targetDate = replaceBillId != null ? todayKey() : todayKey();
 
-    String newBillNumber = replaceBillId ?? 'B-${await getDailyBillCount()}';
+    String newBillNumber = replaceBillId ?? 'B-${await getDailyBillCount(operatorName)}';
 
     final newRecord = BillingHistoryRecord(
       billNumber: newBillNumber,
@@ -175,17 +177,20 @@ class HistoryService {
   }
 
   /// Returns the next bill number for today. Only counts regular bills (B-x).
-  static Future<int> getDailyBillCount() async {
+  static Future<int> getDailyBillCount(String currentOperator) async {
     final records = await _loadAndPurge();
     final today = todayKey();
     
     int maxNumber = 0;
     for (final r in records) {
       if (r.date == today && r.billNumber.startsWith('B-')) {
-        final numberStr = r.billNumber.substring(2);
-        final number = int.tryParse(numberStr);
-        if (number != null && number > maxNumber) {
-          maxNumber = number;
+        final String origOp = r.originalOperator ?? r.operatorName;
+        if (origOp == currentOperator) {
+          final numberStr = r.billNumber.substring(2);
+          final number = int.tryParse(numberStr);
+          if (number != null && number > maxNumber) {
+            maxNumber = number;
+          }
         }
       }
     }

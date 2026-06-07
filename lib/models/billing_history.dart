@@ -15,6 +15,8 @@ class BillingHistoryRecord {
   final double grandTotal;
   final List<Map<String, dynamic>> itemsJson;
   final String? firestoreId;
+  final String? originalOperator;
+  final bool isEdited;
 
   BillingHistoryRecord({
     required this.billNumber,
@@ -30,6 +32,8 @@ class BillingHistoryRecord {
     this.cashAmount = 0,
     this.upiAmount = 0,
     this.firestoreId,
+    this.originalOperator,
+    this.isEdited = false,
   });
 
   Map<String, dynamic> toJson() => {
@@ -43,6 +47,8 @@ class BillingHistoryRecord {
     'cashAmount': cashAmount,
     'upiAmount': upiAmount,
     'items': itemsJson,
+    'isEdited': isEdited,
+    if (originalOperator != null) 'originalOperator': originalOperator,
     if (apartmentName != null) 'apartmentName': apartmentName,
     if (blockAndDoor != null) 'blockAndDoor': blockAndDoor,
     if (firestoreId != null) 'firestoreId': firestoreId,
@@ -62,6 +68,8 @@ class BillingHistoryRecord {
     double? grandTotal,
     List<Map<String, dynamic>>? itemsJson,
     String? firestoreId,
+    String? originalOperator,
+    bool? isEdited,
   }) {
     return BillingHistoryRecord(
       billNumber: billNumber ?? this.billNumber,
@@ -77,6 +85,8 @@ class BillingHistoryRecord {
       grandTotal: grandTotal ?? this.grandTotal,
       itemsJson: itemsJson ?? this.itemsJson,
       firestoreId: firestoreId ?? this.firestoreId,
+      originalOperator: originalOperator ?? this.originalOperator,
+      isEdited: isEdited ?? this.isEdited,
     );
   }
 
@@ -95,6 +105,8 @@ class BillingHistoryRecord {
       apartmentName: json['apartmentName'] as String?,
       blockAndDoor: json['blockAndDoor'] as String?,
       firestoreId: docId ?? json['firestoreId'] as String?,
+      originalOperator: json['originalOperator'] as String?,
+      isEdited: json['isEdited'] as bool? ?? false,
     );
   }
 

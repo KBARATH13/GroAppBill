@@ -49,7 +49,7 @@ class DeliveryInfoCard extends ConsumerWidget {
           DropdownButtonFormField<String>(
             dropdownColor: scheme.surfaceContainer,
             style: const TextStyle(color: Colors.white),
-            value: delivery.customerType,
+            initialValue: delivery.customerType,
             onChanged: (value) {
               if (value != null) {
                 deliveryNotifier.setCustomerType(value);

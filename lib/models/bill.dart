@@ -23,6 +23,7 @@ class Bill {
   final String? shopPhone;
   final String? billGreeting;
   final String? billExtraInfo;
+  final String? originalOperator;
   final String? firestoreId;
 
   const Bill({
@@ -42,6 +43,7 @@ class Bill {
     this.shopPhone,
     this.billGreeting,
     this.billExtraInfo,
+    this.originalOperator,
     this.firestoreId,
   });
 
@@ -73,6 +75,7 @@ class Bill {
     'paymentMode': paymentMode,
     'cashAmount': cashAmount,
     'upiAmount': upiAmount,
+    if (originalOperator != null) 'originalOperator': originalOperator,
     if (apartmentName != null) 'apartmentName': apartmentName,
     if (blockAndDoor != null) 'blockAndDoor': blockAndDoor,
     if (firestoreId != null) 'firestoreId': firestoreId,

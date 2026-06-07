@@ -6,7 +6,7 @@ import '../widgets/numpad_input_sheet.dart';
 import '../widgets/product_form_dialog.dart';
 import '../widgets/glass_container.dart';
 import '../widgets/cart_selection_tabs.dart';
-import '../widgets/delivery_info_card.dart';
+import '../widgets/address_info_card.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/rendering.dart';
@@ -515,7 +515,7 @@ class _BillingScreenState extends ConsumerState<BillingScreen> {
                         child: DropdownButtonFormField<String>(
                           dropdownColor: scheme.surfaceContainer,
                           style: const TextStyle(color: Colors.white, fontSize: 12),
-                          value: _sortBy,
+                          initialValue: _sortBy,
                           isDense: true,
                           decoration: InputDecoration(
                             contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
