@@ -75,6 +75,90 @@ class _CartScreenState extends ConsumerState<CartScreen> {
     }
   }
 
+  Future<int?> _showMergeTargetDialog(List<int> sourceCartIndices, List<List<CartItem>> carts) async {
+    return showDialog<int>(
+      context: context,
+      builder: (ctx) {
+        return AlertDialog(
+          title: const Text('Merge With Cart'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: sourceCartIndices.map((index) {
+                final cartItems = carts[index];
+                return ListTile(
+                  title: Text('Cart ${index + 1}'),
+                  subtitle: Text('${cartItems.length} item${cartItems.length == 1 ? '' : 's'}'),
+                  onTap: () => Navigator.pop(ctx, index),
+                );
+              }).toList(),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancel'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<DuplicateMergeStrategy?> _showDuplicateResolveDialog(
+    int activeCartIndex,
+    int sourceCartIndex,
+    List<CartItem> activeCart,
+    List<CartItem> sourceCart,
+  ) async {
+    final duplicateItems = activeCart.where((item) => sourceCart.any((other) => other.product.id == item.product.id)).toList();
+
+    return showDialog<DuplicateMergeStrategy>(
+      context: context,
+      builder: (ctx) {
+        return AlertDialog(
+          title: const Text('Duplicate Item Conflict'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Cart ${activeCartIndex + 1} and Cart ${sourceCartIndex + 1} both contain the following items. Choose how to merge duplicates:',
+                ),
+                const SizedBox(height: 16),
+                ...duplicateItems.map((item) {
+                  final otherItem = sourceCart.firstWhere((other) => other.product.id == item.product.id);
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 8.0),
+                    child: Text(
+                      '${item.product.name} — ${item.quantity.toStringAsFixed(3)} + ${otherItem.quantity.toStringAsFixed(3)}',
+                      style: const TextStyle(fontSize: 14),
+                    ),
+                  );
+                }),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, DuplicateMergeStrategy.keepCurrent),
+              child: const Text('Keep Current Cart'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, DuplicateMergeStrategy.keepSource),
+              child: const Text('Keep Selected Cart'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, DuplicateMergeStrategy.addQuantities),
+              child: const Text('Add Together'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   // ─── Payment Dialog ──────────────────────────────────────────────────────────
 
   Future<Map<String, dynamic>?> _showPaymentDialog(
@@ -407,6 +491,7 @@ class _CartScreenState extends ConsumerState<CartScreen> {
   Widget build(BuildContext context) {
     final cartState = ref.watch(cartProvider);
     final products = ref.watch(productsProvider);
+    final showMergeButton = cartState.hasMultipleNonEmptyCarts && cartState.activeCart.isNotEmpty;
     
     // Sync prices in real-time for display
     final cart = cartState.activeCart.map((item) {
@@ -481,6 +566,70 @@ class _CartScreenState extends ConsumerState<CartScreen> {
                   ),
                   Row(
                     children: [
+                      if (showMergeButton)
+                        Padding(
+                          padding: const EdgeInsets.only(right: 8.0),
+                          child: GestureDetector(
+                            onTap: () async {
+                              final sourceCartIndices = cartState.carts
+                                  .asMap()
+                                  .entries
+                                  .where((entry) => entry.key != cartState.activeIndex && entry.value.isNotEmpty)
+                                  .map((entry) => entry.key)
+                                  .toList();
+
+                              final sourceCartIndex = await _showMergeTargetDialog(
+                                sourceCartIndices,
+                                cartState.carts,
+                              );
+                              if (sourceCartIndex == null) return;
+
+                              final existingDuplicates = cartState.activeCart
+                                  .where((item) => cartState.carts[sourceCartIndex]
+                                      .any((other) => other.product.id == item.product.id))
+                                  .toList();
+
+                              final duplicateStrategy = existingDuplicates.isEmpty
+                                  ? DuplicateMergeStrategy.keepCurrent
+                                  : await _showDuplicateResolveDialog(
+                                      cartState.activeIndex,
+                                      sourceCartIndex,
+                                      cartState.activeCart,
+                                      cartState.carts[sourceCartIndex],
+                                    );
+                              if (duplicateStrategy == null) return;
+
+                              cartNotifier.mergeCartIntoActive(sourceCartIndex, duplicateStrategy);
+                              if (mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text(
+                                      'Merged Cart ${sourceCartIndex + 1} into Cart ${cartState.activeIndex + 1}',
+                                    ),
+                                  ),
+                                );
+                              }
+                            },
+                            child: GlassContainer(
+                              color: Colors.green,
+                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                              borderRadius: 16,
+                              child: const Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(Icons.merge_type, color: Colors.white, size: 18),
+                                  SizedBox(width: 6),
+                                  Text('MERGE',
+                                      style: TextStyle(
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 13,
+                                      )),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
                       if (cart.isNotEmpty)
                         IconButton(
                           icon: const Icon(Icons.delete_sweep_outlined,

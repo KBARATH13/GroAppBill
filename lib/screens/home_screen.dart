@@ -7,11 +7,11 @@ import '../widgets/glass_container.dart';
 import 'cart_screen.dart';
 import '../widgets/vibrant_background.dart';
 import 'billing_screen.dart';
+import 'water_bottle_screen.dart';
 import 'admin_screen.dart';
 import 'settings_screen.dart';
 import 'history_screen.dart';
 import 'calculator_screen.dart';
-import 'delivery_screen.dart';
 
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
@@ -65,19 +65,64 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       final products = ref.read(productsProvider);
       final user = ref.read(appUserProvider).valueOrNull;
       if (user != null) {
-        await SyncService.pushToFirestore(user.adminEmail, products);
-      }
-      setState(() => _adminHasLocalChanges = false);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('✓ Inventory published to Firebase successfully!'),
-            backgroundColor: Colors.green,
-            duration: Duration(seconds: 3),
+        showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (loadingCtx) => const AlertDialog(
+            content: SizedBox(
+              height: 90,
+              child: Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    CircularProgressIndicator(),
+                    SizedBox(height: 16),
+                    Text('Publishing inventory... please wait'),
+                  ],
+                ),
+              ),
+            ),
           ),
         );
+
+        try {
+          await SyncService.pushToFirestore(user.adminEmail, products);
+          if (mounted) {
+            Navigator.pop(context); // close loading dialog
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('✓ Inventory published to Firebase successfully!'),
+                backgroundColor: Colors.green,
+                duration: Duration(seconds: 3),
+              ),
+            );
+          }
+          setState(() => _adminHasLocalChanges = false);
+          return true;
+        } catch (error) {
+          if (mounted) {
+            Navigator.pop(context); // close loading dialog
+            await showDialog<void>(
+              context: context,
+              barrierDismissible: false,
+              builder: (errorCtx) => AlertDialog(
+                title: const Text('Publish failed'),
+                content: Text(
+                  'Inventory could not be published to Firebase. Please check your connection and try again.\n\n$error',
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(errorCtx),
+                    child: const Text('OK'),
+                  ),
+                ],
+              ),
+            );
+          }
+          return false;
+        }
       }
-      return true;
+      return false;
     } else if (result == 'discard') {
       setState(() => _adminHasLocalChanges = false);
       return true;
@@ -89,7 +134,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final selectedIndex = ref.read(navigationProvider);
     if (selectedIndex == index) return;
 
-    if (selectedIndex == 2 && index == 0) {
+    if (selectedIndex == 2 && index != 2) {
       final canLeave = await _promptPublishBeforeSwitch();
       if (!canLeave) return;
     }
@@ -190,7 +235,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           index: selectedIndex,
           children: [
             const BillingScreen(),
-            const DeliveryManagerScreen(),
+            const WaterBottleScreen(),
             if (ref.watch(appUserProvider).valueOrNull?.isAdmin == true)
               AdminScreen(
                 hasPendingSync: false,
@@ -219,8 +264,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     onTap: () => _onTabSelected(0),
                   ),
                   _NavBarItem(
-                    icon: Icons.local_shipping,
-                    label: 'Delivery',
+                    icon: Icons.local_drink,
+                    label: 'Bottle',
                     isSelected: selectedIndex == 1,
                     onTap: () => _onTabSelected(1),
                   ),

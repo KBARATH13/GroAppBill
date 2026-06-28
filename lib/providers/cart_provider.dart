@@ -4,6 +4,12 @@ import 'dart:convert';
 import '../models/index.dart';
 import 'inventory_providers.dart';
 
+enum DuplicateMergeStrategy {
+  keepCurrent,
+  keepSource,
+  addQuantities,
+}
+
 class CartState {
   final int activeIndex;
   final List<List<CartItem>> carts;
@@ -22,6 +28,15 @@ class CartState {
   });
   
   List<CartItem> get activeCart => carts[activeIndex];
+
+  List<int> get nonEmptyCartIndices => carts
+      .asMap()
+      .entries
+      .where((entry) => entry.value.isNotEmpty)
+      .map((entry) => entry.key)
+      .toList();
+
+  bool get hasMultipleNonEmptyCarts => nonEmptyCartIndices.length > 1;
   
   CartState copyWith({
     int? activeIndex,
@@ -176,6 +191,72 @@ class CartNotifier extends StateNotifier<CartState> {
       state = state.copyWith(activeIndex: index);
       _saveCart();
     }
+  }
+
+  List<int> get nonEmptyCartIndices => state.carts
+      .asMap()
+      .entries
+      .where((entry) => entry.value.isNotEmpty)
+      .map((entry) => entry.key)
+      .toList();
+
+  bool get hasMultipleNonEmptyCarts => nonEmptyCartIndices.length > 1;
+
+  void mergeCartIntoActive(int sourceCartIndex, DuplicateMergeStrategy duplicateStrategy) {
+    final destinationIndex = state.activeIndex;
+    if (sourceCartIndex == destinationIndex || sourceCartIndex < 0 || sourceCartIndex >= state.carts.length) {
+      return;
+    }
+
+    final destinationCart = List<CartItem>.from(state.activeCart);
+    final sourceCart = state.carts[sourceCartIndex];
+    if (sourceCart.isEmpty) return;
+
+    final destinationById = {
+      for (var item in destinationCart) item.product.id: item,
+    };
+    final sourceById = {
+      for (var item in sourceCart) item.product.id: item,
+    };
+    final duplicateIds = destinationById.keys.toSet().intersection(sourceById.keys.toSet());
+
+    final mergedCart = List<CartItem>.from(destinationCart);
+
+    if (duplicateStrategy == DuplicateMergeStrategy.keepSource) {
+      mergedCart.removeWhere((item) => duplicateIds.contains(item.product.id));
+    }
+
+    if (duplicateStrategy == DuplicateMergeStrategy.addQuantities) {
+      for (final duplicateId in duplicateIds) {
+        final currentIndex = mergedCart.indexWhere((item) => item.product.id == duplicateId);
+        if (currentIndex >= 0) {
+          final currentItem = mergedCart[currentIndex];
+          final sourceItem = sourceById[duplicateId]!;
+          mergedCart[currentIndex] = CartItem(
+            product: currentItem.product,
+            quantity: currentItem.quantity + sourceItem.quantity,
+            isPriceOverridden: currentItem.isPriceOverridden || sourceItem.isPriceOverridden,
+          );
+        }
+      }
+    }
+
+    for (final item in sourceCart) {
+      final isDuplicate = duplicateIds.contains(item.product.id);
+      if (isDuplicate) {
+        if (duplicateStrategy == DuplicateMergeStrategy.keepSource) {
+          mergedCart.add(item);
+        }
+      } else {
+        mergedCart.add(item);
+      }
+    }
+
+    final newCarts = List<List<CartItem>>.from(state.carts);
+    newCarts[destinationIndex] = mergedCart;
+    newCarts[sourceCartIndex] = [];
+    state = state.copyWith(carts: newCarts);
+    _saveCart();
   }
 
   void addItem(Product product, double quantity, {bool isPriceOverridden = false}) {

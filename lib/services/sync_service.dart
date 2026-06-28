@@ -20,6 +20,7 @@ class SyncService {
     }
 
     await batch.commit();
+    await _db.waitForPendingWrites();
 
     // Mark local as in-sync
     final prefs = await SharedPreferences.getInstance();

@@ -7,7 +7,6 @@ import '../services/printer_service.dart';
 import '../models/app_user.dart';
 import '../widgets/glass_container.dart';
 import '../widgets/vibrant_background.dart';
-import 'salesman_payment_screen.dart';
 
 
 class SettingsScreen extends ConsumerStatefulWidget {
@@ -286,42 +285,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                               ),
                             ),
                           ],
-                        ),
-                      ),
-                      const SizedBox(height: 24),
-                      // --- Store Utilities ---
-                      const Text('Store Utilities', style: TextStyle(color: Colors.white70, fontSize: 13, fontWeight: FontWeight.bold, letterSpacing: 1.2)),
-                      const SizedBox(height: 12),
-                      GestureDetector(
-                        onTap: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(builder: (_) => const SalesmanPaymentScreen()),
-                          );
-                        },
-                        child: GlassContainer(
-                          padding: const EdgeInsets.all(16),
-                          child: Row(
-                            children: [
-                              CircleAvatar(
-                                radius: 20,
-                                backgroundColor: Colors.white.withOpacity(0.1),
-                                child: const Icon(Icons.menu_book, color: Colors.white, size: 22),
-                              ),
-                              const SizedBox(width: 16),
-                              const Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text('Salesman Payments Ledger', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15)),
-                                    SizedBox(height: 4),
-                                    Text('Track payments & dues owed to company salesmen', style: TextStyle(color: Colors.white60, fontSize: 12)),
-                                  ],
-                                ),
-                              ),
-                              const Icon(Icons.chevron_right, color: Colors.white54),
-                            ],
-                          ),
                         ),
                       ),
                       const SizedBox(height: 24),

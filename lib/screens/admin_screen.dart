@@ -32,6 +32,7 @@ class _AdminScreenState extends ConsumerState<AdminScreen> {
   String _sortBy = 'Name (A-Z)';
   late TextEditingController _searchController;
   bool _isProcessingScan = false;
+  bool _isPublishing = false;
   bool _hasLocalChanges = false; // true when admin has unpublished inventory changes
 
   @override
@@ -169,15 +170,72 @@ class _AdminScreenState extends ConsumerState<AdminScreen> {
   }
 
   Future<void> _pushToFirestore() async {
+    if (_isPublishing) return;
     final products = ref.read(productsProvider);
     final user = ref.read(appUserProvider).valueOrNull;
-    if (user != null) {
+    if (user == null) return;
+
+    setState(() => _isPublishing = true);
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => const AlertDialog(
+        content: SizedBox(
+          height: 90,
+          child: Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                CircularProgressIndicator(),
+                SizedBox(height: 16),
+                Text('Publishing inventory... please wait'),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+
+    try {
       await SyncService.pushToFirestore(user.adminEmail, products);
-      setState(() => _hasLocalChanges = false);
-      widget.onPublishComplete?.call();
+      if (mounted) {
+        Navigator.pop(context);
+        setState(() => _hasLocalChanges = false);
+        widget.onPublishComplete?.call();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('✓ Inventory published to Firebase successfully!'),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 3),
+          ),
+        );
+      }
+    } catch (error) {
+      if (mounted) {
+        Navigator.pop(context);
+        await showDialog<void>(
+          context: context,
+          barrierDismissible: false,
+          builder: (errorCtx) => AlertDialog(
+            title: const Text('Publish failed'),
+            content: Text(
+              'Inventory could not be published to Firebase. Please check your connection and try again.\n\n$error',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(errorCtx),
+                child: const Text('OK'),
+              ),
+            ],
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isPublishing = false);
+      }
     }
   }
-
 
   Future<void> _handleSync() async {
     final user = ref.read(appUserProvider).valueOrNull;
@@ -226,16 +284,6 @@ class _AdminScreenState extends ConsumerState<AdminScreen> {
       );
       if (confirmed == true) {
         await _pushToFirestore();
-        if (mounted) {
-          final scheme = Theme.of(context).colorScheme;
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: const Text('✓ Inventory published to Firebase successfully!'),
-              backgroundColor: scheme.secondary,
-              duration: const Duration(seconds: 3),
-            ),
-          );
-        }
       }
     } else if (widget.onSync != null) {
       await widget.onSync!();
@@ -391,7 +439,7 @@ class _AdminScreenState extends ConsumerState<AdminScreen> {
                       ),
                     ),
                     ElevatedButton.icon(
-                      onPressed: _handleSync,
+                      onPressed: _isPublishing ? null : _handleSync,
                       icon: Builder(
                         builder: (context) {
                           final scheme = Theme.of(context).colorScheme;
@@ -421,9 +469,9 @@ class _AdminScreenState extends ConsumerState<AdminScreen> {
                         },
                       ),
                       label: Text(
-                        _hasLocalChanges
-                            ? 'Publish'
-                            : (widget.hasPendingSync ? 'Sync!' : 'Sync'),
+                        _isPublishing
+                            ? 'Publishing...'
+                            : (_hasLocalChanges ? 'Publish' : (widget.hasPendingSync ? 'Sync!' : 'Sync')),
                         style: const TextStyle(fontWeight: FontWeight.bold),
                       ),
                       style: ElevatedButton.styleFrom(
