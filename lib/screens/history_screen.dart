@@ -4,6 +4,7 @@ import '../models/billing_history.dart';
 import '../models/bill.dart';
 import '../models/cart_item.dart';
 import '../services/history_service.dart';
+import '../services/auth_service.dart';
 import '../services/printer_service.dart';
 import '../providers/app_providers.dart';
 import '../widgets/glass_container.dart';
@@ -31,6 +32,7 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
   void initState() {
     super.initState();
     _windowKeys = HistoryService.rollingWindowKeys();
+    _windowKeys.add(HistoryService.storedBillsKey);
     _selectedDateKey = _windowKeys[0]; // default → today
   }
 
@@ -41,6 +43,7 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
   }
 
   String _labelFor(String key) {
+    if (key == HistoryService.storedBillsKey) return 'Stored Bills';
     final today = _windowKeys[0];
     final yesterday = _windowKeys[1];
     final parts = key.split('-');
@@ -82,11 +85,40 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
         final endMinutes = _endTime!.hour * 60 + _endTime!.minute;
         if (billMinutes > endMinutes) return false;
       }
-      
+
       return true;
     } catch (e) {
       return true; // Fallback if parsing fails
     }
+  }
+
+  String _billKey(BillingHistoryRecord bill) {
+    final firestoreId = bill.firestoreId?.trim();
+    if (firestoreId != null && firestoreId.isNotEmpty) return firestoreId;
+    return '${bill.billNumber}|${bill.operatorName}|${bill.createdAtMs}';
+  }
+
+  Map<String, List<BillingHistoryRecord>> _mergeLocalPendingBills(
+    Map<String, List<BillingHistoryRecord>> cloudHistory,
+    List<BillingHistoryRecord> localPendingBills,
+  ) {
+    final merged = <String, List<BillingHistoryRecord>>{
+      for (final entry in cloudHistory.entries)
+        entry.key: List<BillingHistoryRecord>.from(entry.value),
+    };
+    final existingKeys = merged.values
+        .expand((bills) => bills)
+        .map(_billKey)
+        .toSet();
+
+    for (final bill in localPendingBills) {
+      if (existingKeys.add(_billKey(bill))) {
+        final key = bill.isStored ? HistoryService.storedBillsKey : bill.date;
+        merged.putIfAbsent(key, () => []).add(bill);
+      }
+    }
+
+    return merged;
   }
 
   Future<void> _selectTimeRange() async {
@@ -113,11 +145,16 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
   @override
   Widget build(BuildContext context) {
     final historyAsync = ref.watch(billHistoryStreamProvider);
+    final localPendingAsync = ref.watch(localPendingBillsProvider);
+    final appUser = ref.watch(appUserProvider).valueOrNull;
 
     return Scaffold(
       backgroundColor: Colors.transparent,
       appBar: AppBar(
-        title: const Text('Bill History', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+        title: const Text(
+          'Bill History',
+          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+        ),
         backgroundColor: Colors.transparent,
         elevation: 0,
         iconTheme: const IconThemeData(color: Colors.white),
@@ -137,22 +174,37 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
       body: VibrantBackground(
         child: SafeArea(
           child: historyAsync.when(
-            loading: () => const Center(child: CircularProgressIndicator(color: Colors.white)),
-            error: (err, stack) => Center(child: Text('Error: $err', style: const TextStyle(color: Colors.red))),
+            loading: () => const Center(
+              child: CircularProgressIndicator(color: Colors.white),
+            ),
+            error: (err, stack) => Center(
+              child: Text(
+                'Error: $err',
+                style: const TextStyle(color: Colors.red),
+              ),
+            ),
             data: (history) {
-              // 1. Extract Unique Operators from ALL 3 days
+              final localPendingBills =
+                  localPendingAsync.valueOrNull ??
+                  const <BillingHistoryRecord>[];
+              final mergedHistory = _mergeLocalPendingBills(
+                history,
+                localPendingBills,
+              );
+              // Extract unique operators from the rolling days and stored bills.
               final allOperators = <String>{};
               for (final key in _windowKeys) {
-                final dayBills = history[key] ?? [];
+                final dayBills = mergedHistory[key] ?? [];
                 for (final b in dayBills) {
                   allOperators.add(b.operatorName);
-                  if (b.originalOperator != null) allOperators.add(b.originalOperator!);
+                  if (b.originalOperator != null)
+                    allOperators.add(b.originalOperator!);
                 }
               }
               final operatorList = allOperators.toList()..sort();
 
-              final rawBills = history[_selectedDateKey] ?? [];
-              
+              final rawBills = mergedHistory[_selectedDateKey] ?? [];
+
               // Apply Filters
               final query = _searchController.text.trim();
               final filteredBills = rawBills.where((b) {
@@ -169,135 +221,292 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                 bool matchesTime = _isWithinTimeRange(b.time);
 
                 // 3. Payment Mode Filter
-                bool matchesPayment = _selectedPaymentMode == 'All' ||
+                bool matchesPayment =
+                    _selectedPaymentMode == 'All' ||
                     b.paymentMode == _selectedPaymentMode;
 
                 return matchesSearch && matchesTime && matchesPayment;
               }).toList();
-              
+
               // ... (sorting logic unchanged)
               filteredBills.sort((a, b) {
                 final aMins = _timeStrToMinutes(a.time);
                 final bMins = _timeStrToMinutes(b.time);
                 if (aMins != bMins) return bMins.compareTo(aMins);
                 int aId = 0, bId = 0;
-                if (a.billNumber.startsWith('B-')) aId = int.tryParse(a.billNumber.substring(2)) ?? 0;
-                if (b.billNumber.startsWith('B-')) bId = int.tryParse(b.billNumber.substring(2)) ?? 0;
+                if (a.billNumber.startsWith('B-'))
+                  aId = int.tryParse(a.billNumber.substring(2)) ?? 0;
+                if (b.billNumber.startsWith('B-'))
+                  bId = int.tryParse(b.billNumber.substring(2)) ?? 0;
                 return bId.compareTo(aId);
               });
 
-              final totalSales = filteredBills.fold<double>(0, (sum, b) => sum + b.grandTotal);
+              final totalSales = filteredBills.fold<double>(
+                0,
+                (sum, b) => sum + b.grandTotal,
+              );
+              final pendingBills = List<BillingHistoryRecord>.from(
+                localPendingBills,
+              )..sort((a, b) => a.createdAtMs.compareTo(b.createdAtMs));
+              final pendingKeys = pendingBills.map(_billKey).toSet();
 
               return Column(
                 children: [
+                  if (pendingBills.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                      child: GlassContainer(
+                        padding: const EdgeInsets.all(14),
+                        borderRadius: 18,
+                        child: Row(
+                          children: [
+                            const Icon(
+                              Icons.cloud_upload_outlined,
+                              color: Colors.orangeAccent,
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    '${pendingBills.length} pending upload${pendingBills.length == 1 ? '' : 's'}',
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    'Bills saved locally and waiting for connectivity',
+                                    style: const TextStyle(
+                                      color: Colors.white70,
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            if (appUser != null &&
+                                appUser.adminEmail.isNotEmpty)
+                              TextButton.icon(
+                                onPressed: () async {
+                                  setState(() {});
+                                  await HistoryService.syncPendingBills(
+                                    appUser.adminEmail,
+                                  );
+                                  if (mounted) setState(() {});
+                                },
+                                icon: const Icon(Icons.sync, size: 18),
+                                label: const Text('Sync Now'),
+                              ),
+                          ],
+                        ),
+                      ),
+                    ),
                   Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 8,
+                    ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         // ==== Operator Tally Section ====
                         Autocomplete<String>(
                           optionsBuilder: (TextEditingValue textEditingValue) {
-                            if (textEditingValue.text.isEmpty) return const Iterable<String>.empty();
+                            if (textEditingValue.text.isEmpty)
+                              return const Iterable<String>.empty();
                             return operatorList.where((String option) {
-                              return option.toLowerCase().contains(textEditingValue.text.toLowerCase());
+                              return option.toLowerCase().contains(
+                                textEditingValue.text.toLowerCase(),
+                              );
                             });
                           },
                           onSelected: (String selection) {
-                            _showOperatorTallyDialog(context, selection, history);
-                          },
-                          fieldViewBuilder: (context, controller, focusNode, onFieldSubmitted) {
-                            return TextField(
-                              controller: controller,
-                              focusNode: focusNode,
-                              style: const TextStyle(color: Colors.white, fontSize: 14),
-                              decoration: InputDecoration(
-                                hintText: 'Search Operator for 3-Day Tally...',
-                                hintStyle: const TextStyle(color: Colors.white38, fontSize: 13),
-                                prefixIcon: const Icon(Icons.person_search, color: Colors.blueAccent, size: 20),
-                                filled: true,
-                                fillColor: Colors.blueAccent.withOpacity(0.1),
-                                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: Colors.blueAccent.withOpacity(0.3))),
-                                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                              ),
+                            _showOperatorTallyDialog(
+                              context,
+                              selection,
+                              mergedHistory,
                             );
                           },
+                          fieldViewBuilder:
+                              (
+                                context,
+                                controller,
+                                focusNode,
+                                onFieldSubmitted,
+                              ) {
+                                return TextField(
+                                  controller: controller,
+                                  focusNode: focusNode,
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 14,
+                                  ),
+                                  decoration: InputDecoration(
+                                    hintText:
+                                        'Search Operator for 3-Day Tally...',
+                                    hintStyle: const TextStyle(
+                                      color: Colors.white38,
+                                      fontSize: 13,
+                                    ),
+                                    prefixIcon: const Icon(
+                                      Icons.person_search,
+                                      color: Colors.blueAccent,
+                                      size: 20,
+                                    ),
+                                    filled: true,
+                                    fillColor: Colors.blueAccent.withOpacity(
+                                      0.1,
+                                    ),
+                                    border: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(12),
+                                      borderSide: BorderSide(
+                                        color: Colors.blueAccent.withOpacity(
+                                          0.3,
+                                        ),
+                                      ),
+                                    ),
+                                    contentPadding: const EdgeInsets.symmetric(
+                                      horizontal: 12,
+                                      vertical: 8,
+                                    ),
+                                  ),
+                                );
+                              },
                         ),
                         const SizedBox(height: 12),
-                        Row(
-                          children: [
-                            Expanded(
-                              flex: 2,
-                              child: DropdownButtonFormField<String>(
-                                value: _selectedDateKey,
-                                dropdownColor: const Color(0xFF1A1A1A),
-                                style: const TextStyle(color: Colors.white, fontSize: 13),
-                                decoration: InputDecoration(
-                                  labelText: 'Day',
-                                  labelStyle: const TextStyle(color: Colors.white70, fontSize: 12),
-                                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                                  filled: true,
-                                  fillColor: Colors.white.withOpacity(0.05),
-                                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                                ),
-                                items: _windowKeys.map((key) {
-                                  return DropdownMenuItem(
-                                    value: key,
-                                    child: Text(_labelFor(key).split('  ')[0], overflow: TextOverflow.ellipsis),
-                                  );
-                                }).toList(),
-                                onChanged: (v) => v != null ? setState(() => _selectedDateKey = v) : null,
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              flex: 3,
-                              child: TextField(
-                                key: _searchBarKey,
-                                controller: _searchController,
-                                keyboardType: TextInputType.number,
-                                style: const TextStyle(color: Colors.white),
-                                onChanged: (value) {
-                                  setState(() {});
-                                },
-                                decoration: InputDecoration(
-                                  hintText: 'Bill # / Price',
-                                  hintStyle: const TextStyle(color: Colors.white38, fontSize: 13),
-                                  prefixIcon: const Icon(Icons.search, color: Colors.white70, size: 18),
-                                  suffixIcon: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      if (_searchController.text.isNotEmpty)
-                                        IconButton(
-                                          icon: const Icon(Icons.clear, size: 16),
-                                          onPressed: () {
-                                            _searchController.clear();
-                                            setState(() {});
-                                          },
-                                        ),
-                                      IconButton(
-                                        icon: Icon(Icons.access_time, 
-                                          color: (_startTime != null || _endTime != null) ? Colors.orange : Colors.white70, 
-                                          size: 18),
-                                        onPressed: _selectTimeRange,
+                        LayoutBuilder(
+                          builder: (context, constraints) {
+                            final isCompact = constraints.maxWidth < 420;
+                            final fieldWidth = isCompact
+                                ? constraints.maxWidth
+                                : constraints.maxWidth * 0.4;
+                            final searchWidth = isCompact
+                                ? constraints.maxWidth
+                                : constraints.maxWidth * 0.58;
+
+                            return Wrap(
+                              spacing: 8,
+                              runSpacing: 8,
+                              children: [
+                                SizedBox(
+                                  width: fieldWidth,
+                                  child: DropdownButtonFormField<String>(
+                                    value: _selectedDateKey,
+                                    dropdownColor: const Color(0xFF1A1A1A),
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 13,
+                                    ),
+                                    decoration: InputDecoration(
+                                      labelText: 'Day',
+                                      labelStyle: const TextStyle(
+                                        color: Colors.white70,
+                                        fontSize: 12,
                                       ),
-                                    ],
+                                      border: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                      filled: true,
+                                      fillColor: Colors.white.withOpacity(0.05),
+                                      contentPadding:
+                                          const EdgeInsets.symmetric(
+                                            horizontal: 12,
+                                            vertical: 8,
+                                          ),
+                                    ),
+                                    items: _windowKeys.map((key) {
+                                      return DropdownMenuItem(
+                                        value: key,
+                                        child: Text(
+                                          _labelFor(key).split('  ')[0],
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      );
+                                    }).toList(),
+                                    onChanged: (v) => v != null
+                                        ? setState(() => _selectedDateKey = v)
+                                        : null,
                                   ),
-                                  filled: true,
-                                  fillColor: Colors.white.withOpacity(0.05),
-                                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                                 ),
-                              ),
-                            ),
-                          ],
+                                SizedBox(
+                                  width: searchWidth,
+                                  child: TextField(
+                                    key: _searchBarKey,
+                                    controller: _searchController,
+                                    keyboardType: TextInputType.number,
+                                    style: const TextStyle(color: Colors.white),
+                                    onChanged: (value) {
+                                      setState(() {});
+                                    },
+                                    decoration: InputDecoration(
+                                      hintText: 'Bill # / Price',
+                                      hintStyle: const TextStyle(
+                                        color: Colors.white38,
+                                        fontSize: 13,
+                                      ),
+                                      prefixIcon: const Icon(
+                                        Icons.search,
+                                        color: Colors.white70,
+                                        size: 18,
+                                      ),
+                                      suffixIcon: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          if (_searchController.text.isNotEmpty)
+                                            IconButton(
+                                              icon: const Icon(
+                                                Icons.clear,
+                                                size: 16,
+                                              ),
+                                              onPressed: () {
+                                                _searchController.clear();
+                                                setState(() {});
+                                              },
+                                            ),
+                                          IconButton(
+                                            icon: Icon(
+                                              Icons.access_time,
+                                              color:
+                                                  (_startTime != null ||
+                                                      _endTime != null)
+                                                  ? Colors.orange
+                                                  : Colors.white70,
+                                              size: 18,
+                                            ),
+                                            onPressed: _selectTimeRange,
+                                          ),
+                                        ],
+                                      ),
+                                      filled: true,
+                                      fillColor: Colors.white.withOpacity(0.05),
+                                      border: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                      contentPadding:
+                                          const EdgeInsets.symmetric(
+                                            horizontal: 12,
+                                            vertical: 8,
+                                          ),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            );
+                          },
                         ),
                         if (_startTime != null && _endTime != null)
                           Padding(
                             padding: const EdgeInsets.only(top: 8.0, left: 4.0),
                             child: Text(
                               'Filter: ${_startTime!.format(context)} to ${_endTime!.format(context)}',
-                              style: const TextStyle(color: Colors.orange, fontSize: 11, fontWeight: FontWeight.bold),
+                              style: const TextStyle(
+                                color: Colors.orange,
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                              ),
                             ),
                           ),
                         const SizedBox(height: 12),
@@ -323,46 +532,59 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                         SingleChildScrollView(
                           scrollDirection: Axis.horizontal,
                           child: Row(
-                            children: ['All', 'Cash', 'UPI', 'Mix-Payment'].map((mode) {
-                              final isSelected = _selectedPaymentMode == mode;
-                              final chipColor = mode == 'Cash'
-                                  ? const Color(0xFF2ECC71)
-                                  : mode == 'UPI'
-                                      ? Colors.blueAccent
-                                      : mode == 'Mix-Payment'
-                                          ? Colors.orangeAccent
-                                          : Colors.white;
-                              return Padding(
-                                padding: const EdgeInsets.only(right: 8),
-                                child: GestureDetector(
-                                  onTap: () => setState(() => _selectedPaymentMode = mode),
-                                  child: AnimatedContainer(
-                                    duration: const Duration(milliseconds: 200),
-                                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
-                                    decoration: BoxDecoration(
-                                      color: isSelected
-                                          ? chipColor.withOpacity(0.2)
-                                          : Colors.white.withOpacity(0.05),
-                                      borderRadius: BorderRadius.circular(20),
-                                      border: Border.all(
-                                        color: isSelected
-                                            ? chipColor.withOpacity(0.6)
-                                            : Colors.white.withOpacity(0.1),
-                                        width: isSelected ? 1.5 : 1,
-                                      ),
+                            children: ['All', 'Cash', 'UPI', 'Mix-Payment'].map(
+                              (mode) {
+                                final isSelected = _selectedPaymentMode == mode;
+                                final chipColor = mode == 'Cash'
+                                    ? const Color(0xFF2ECC71)
+                                    : mode == 'UPI'
+                                    ? Colors.blueAccent
+                                    : mode == 'Mix-Payment'
+                                    ? Colors.orangeAccent
+                                    : Colors.white;
+                                return Padding(
+                                  padding: const EdgeInsets.only(right: 8),
+                                  child: GestureDetector(
+                                    onTap: () => setState(
+                                      () => _selectedPaymentMode = mode,
                                     ),
-                                    child: Text(
-                                      mode == 'Mix-Payment' ? 'Mix' : mode,
-                                      style: TextStyle(
-                                        color: isSelected ? chipColor : Colors.white54,
-                                        fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                                        fontSize: 13,
+                                    child: AnimatedContainer(
+                                      duration: const Duration(
+                                        milliseconds: 200,
+                                      ),
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 14,
+                                        vertical: 7,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: isSelected
+                                            ? chipColor.withOpacity(0.2)
+                                            : Colors.white.withOpacity(0.05),
+                                        borderRadius: BorderRadius.circular(20),
+                                        border: Border.all(
+                                          color: isSelected
+                                              ? chipColor.withOpacity(0.6)
+                                              : Colors.white.withOpacity(0.1),
+                                          width: isSelected ? 1.5 : 1,
+                                        ),
+                                      ),
+                                      child: Text(
+                                        mode == 'Mix-Payment' ? 'Mix' : mode,
+                                        style: TextStyle(
+                                          color: isSelected
+                                              ? chipColor
+                                              : Colors.white54,
+                                          fontWeight: isSelected
+                                              ? FontWeight.bold
+                                              : FontWeight.normal,
+                                          fontSize: 13,
+                                        ),
                                       ),
                                     ),
                                   ),
-                                ),
-                              );
-                            }).toList(),
+                                );
+                              },
+                            ).toList(),
                           ),
                         ),
                       ],
@@ -374,11 +596,18 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                             child: Column(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                Icon(Icons.receipt_long_outlined, size: 56, color: Colors.white.withOpacity(0.2)),
+                                Icon(
+                                  Icons.receipt_long_outlined,
+                                  size: 56,
+                                  color: Colors.white.withOpacity(0.2),
+                                ),
                                 const SizedBox(height: 12),
                                 Text(
                                   'No matching bills found.',
-                                  style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 15),
+                                  style: TextStyle(
+                                    color: Colors.white.withOpacity(0.5),
+                                    fontSize: 15,
+                                  ),
                                 ),
                               ],
                             ),
@@ -388,20 +617,32 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                             itemCount: filteredBills.length,
                             itemBuilder: (context, i) {
                               final bill = filteredBills[i];
-                              final isCalculation = bill.customerType == 'Calculator';
-                              final badgeColor = isCalculation ? Colors.purple : const Color(0xFF2ECC71);
-                              final badgeBgColor = isCalculation ? Colors.purple.withOpacity(0.2) : const Color(0xFF2ECC71).withOpacity(0.2);
-                              
+                              final isCalculation =
+                                  bill.customerType == 'Calculator';
+                              final badgeColor = isCalculation
+                                  ? Colors.purple
+                                  : const Color(0xFF2ECC71);
+                              final badgeBgColor = isCalculation
+                                  ? Colors.purple.withOpacity(0.2)
+                                  : const Color(0xFF2ECC71).withOpacity(0.2);
+
                               return Padding(
-                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 16,
+                                  vertical: 6,
+                                ),
                                 child: GlassContainer(
-                                  color: isCalculation ? Colors.purple : Colors.transparent,
+                                  color: isCalculation
+                                      ? Colors.purple
+                                      : Colors.transparent,
                                   borderRadius: 12,
                                   child: ListTile(
                                     leading: CircleAvatar(
                                       backgroundColor: badgeBgColor,
                                       child: Icon(
-                                        isCalculation ? Icons.calculate_outlined : Icons.receipt_long_outlined,
+                                        isCalculation
+                                            ? Icons.calculate_outlined
+                                            : Icons.receipt_long_outlined,
                                         color: badgeColor,
                                         size: 20,
                                       ),
@@ -409,44 +650,60 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                                     title: Text(
                                       isCalculation
                                           ? '${bill.billNumber} 📊 • ${bill.operatorName}'
-                                          : '${bill.billNumber} — ${
-                                              (bill.isEdited && bill.originalOperator != null && bill.originalOperator != bill.operatorName)
-                                              ? "${bill.originalOperator} / Edited by ${bill.operatorName}"
-                                              : bill.operatorName
-                                            }',
-                                      style: const TextStyle(fontWeight: FontWeight.w600, color: Colors.white),
+                                          : '${bill.billNumber} — ${(bill.isEdited && bill.originalOperator != null && bill.originalOperator != bill.operatorName) ? "${bill.originalOperator} / Edited by ${bill.operatorName}" : bill.operatorName}',
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.w600,
+                                        color: Colors.white,
+                                      ),
                                       overflow: TextOverflow.ellipsis,
                                       maxLines: 1,
                                     ),
                                     subtitle: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
                                       children: [
                                         Text(
                                           '${bill.time} · ${isCalculation ? "Calculation" : bill.customerType}',
-                                          style: const TextStyle(color: Colors.white70, fontSize: 12),
+                                          style: const TextStyle(
+                                            color: Colors.white70,
+                                            fontSize: 12,
+                                          ),
                                         ),
-                                        if (isCalculation && bill.itemsJson.isNotEmpty)
+                                        if (isCalculation &&
+                                            bill.itemsJson.isNotEmpty)
                                           Text(
                                             'Expression: ${bill.itemsJson.first['value'] ?? ""}',
-                                            style: const TextStyle(fontSize: 11, color: Colors.white60),
+                                            style: const TextStyle(
+                                              fontSize: 11,
+                                              color: Colors.white60,
+                                            ),
                                             maxLines: 1,
                                             overflow: TextOverflow.ellipsis,
                                           ),
                                         if (!isCalculation)
                                           Text(
                                             'Payment: ${bill.paymentMode}',
-                                            style: const TextStyle(fontSize: 12, color: Colors.white60),
+                                            style: const TextStyle(
+                                              fontSize: 12,
+                                              color: Colors.white60,
+                                            ),
                                           ),
-                                        if (!isCalculation && bill.apartmentName != null)
+                                        if (!isCalculation &&
+                                            bill.apartmentName != null)
                                           Text(
                                             '${bill.apartmentName}, ${bill.blockAndDoor ?? ""}',
-                                            style: const TextStyle(fontSize: 12, color: Colors.white60),
+                                            style: const TextStyle(
+                                              fontSize: 12,
+                                              color: Colors.white60,
+                                            ),
                                           ),
                                       ],
                                     ),
                                     trailing: Column(
-                                      mainAxisAlignment: MainAxisAlignment.center,
-                                      crossAxisAlignment: CrossAxisAlignment.end,
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.center,
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.end,
                                       children: [
                                         Text(
                                           'Rs.${bill.grandTotal.toStringAsFixed(2)}',
@@ -461,18 +718,32 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                                             'Calculated',
                                             style: TextStyle(
                                               fontSize: 10,
-                                              color: badgeColor.withOpacity(0.7),
+                                              color: badgeColor.withOpacity(
+                                                0.7,
+                                              ),
                                               fontWeight: FontWeight.w500,
                                             ),
                                           ),
                                         if (!isCalculation && bill.isEdited)
                                           Container(
-                                            margin: const EdgeInsets.only(top: 4),
-                                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                            margin: const EdgeInsets.only(
+                                              top: 4,
+                                            ),
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 6,
+                                              vertical: 2,
+                                            ),
                                             decoration: BoxDecoration(
-                                              color: Colors.amber.withOpacity(0.15),
-                                              borderRadius: BorderRadius.circular(6),
-                                              border: Border.all(color: Colors.amber.withOpacity(0.5)),
+                                              color: Colors.amber.withOpacity(
+                                                0.15,
+                                              ),
+                                              borderRadius:
+                                                  BorderRadius.circular(6),
+                                              border: Border.all(
+                                                color: Colors.amber.withOpacity(
+                                                  0.5,
+                                                ),
+                                              ),
                                             ),
                                             child: const Text(
                                               '✎ Edited',
@@ -481,6 +752,67 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                                                 color: Colors.amber,
                                                 fontWeight: FontWeight.bold,
                                                 letterSpacing: 0.3,
+                                              ),
+                                            ),
+                                          ),
+                                        if (!isCalculation && bill.isStored)
+                                          Container(
+                                            margin: const EdgeInsets.only(
+                                              top: 4,
+                                            ),
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 6,
+                                              vertical: 2,
+                                            ),
+                                            decoration: BoxDecoration(
+                                              color: Colors.amber.withOpacity(
+                                                0.15,
+                                              ),
+                                              borderRadius:
+                                                  BorderRadius.circular(6),
+                                              border: Border.all(
+                                                color: Colors.amber.withOpacity(
+                                                  0.5,
+                                                ),
+                                              ),
+                                            ),
+                                            child: const Text(
+                                              '★ Stored',
+                                              style: TextStyle(
+                                                fontSize: 9,
+                                                color: Colors.amber,
+                                                fontWeight: FontWeight.bold,
+                                              ),
+                                            ),
+                                          ),
+                                        if (pendingKeys.contains(
+                                          _billKey(bill),
+                                        ))
+                                          Container(
+                                            margin: const EdgeInsets.only(
+                                              top: 4,
+                                            ),
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 6,
+                                              vertical: 2,
+                                            ),
+                                            decoration: BoxDecoration(
+                                              color: Colors.orange.withOpacity(
+                                                0.16,
+                                              ),
+                                              borderRadius:
+                                                  BorderRadius.circular(6),
+                                              border: Border.all(
+                                                color: Colors.orangeAccent
+                                                    .withOpacity(0.65),
+                                              ),
+                                            ),
+                                            child: const Text(
+                                              '⟳ Pending upload',
+                                              style: TextStyle(
+                                                fontSize: 9,
+                                                color: Colors.orangeAccent,
+                                                fontWeight: FontWeight.bold,
                                               ),
                                             ),
                                           ),
@@ -503,14 +835,107 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
     );
   }
 
+  Future<void> _setBillStored(
+    BuildContext context,
+    BillingHistoryRecord bill,
+    bool isStored,
+  ) async {
+    final appUser = ref.read(appUserProvider).valueOrNull;
+    if (appUser == null || appUser.adminEmail.isEmpty) return;
+
+    try {
+      if (bill.uploadedToCloud &&
+          bill.firestoreId != null &&
+          bill.firestoreId!.isNotEmpty) {
+        await AuthService.updateBillRetention(
+          appUser.adminEmail,
+          bill,
+          isStored: isStored,
+        );
+        await HistoryService.markLocalBillStored(bill, isStored);
+      } else {
+        await HistoryService.markLocalBillStored(bill, isStored);
+        await HistoryService.syncPendingBills(appUser.adminEmail);
+      }
+      if (mounted) {
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              isStored
+                  ? 'Bill stored permanently'
+                  : 'Bill removed from stored bills',
+            ),
+          ),
+        );
+      }
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not update bill storage: $error')),
+        );
+      }
+    }
+  }
+
+  Future<void> _deleteStoredBill(
+    BuildContext context,
+    BillingHistoryRecord bill,
+  ) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete stored bill?'),
+        content: const Text(
+          'This permanently removes the bill from the shop history for every device.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.redAccent),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    final appUser = ref.read(appUserProvider).valueOrNull;
+    if (appUser == null || appUser.adminEmail.isEmpty) return;
+    try {
+      if (bill.firestoreId != null && bill.firestoreId!.isNotEmpty) {
+        await AuthService.deleteBill(appUser.adminEmail, bill.firestoreId!);
+      }
+      await HistoryService.deleteLocalBill(bill);
+      if (mounted) {
+        Navigator.pop(context);
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Stored bill deleted')));
+      }
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not delete stored bill: $error')),
+        );
+      }
+    }
+  }
+
   void _showBillDetail(BuildContext context, BillingHistoryRecord bill) {
     final isCalculation = bill.customerType == 'Calculator';
-    
+
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
       builder: (_) => Container(
         decoration: BoxDecoration(
           color: const Color(0xFF1E1E1E),
@@ -533,18 +958,29 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                         children: [
                           Flexible(
                             child: Text(
-                              isCalculation ? '${bill.billNumber} 📊 Calculation' : 'Bill ${bill.billNumber}',
-                              style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.white),
+                              isCalculation
+                                  ? '${bill.billNumber} 📊 Calculation'
+                                  : 'Bill ${bill.billNumber}',
+                              style: const TextStyle(
+                                fontSize: 22,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white,
+                              ),
                             ),
                           ),
                           if (!isCalculation && bill.isEdited) ...[
                             const SizedBox(width: 8),
                             Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 7,
+                                vertical: 3,
+                              ),
                               decoration: BoxDecoration(
                                 color: Colors.amber.withOpacity(0.15),
                                 borderRadius: BorderRadius.circular(8),
-                                border: Border.all(color: Colors.amber.withOpacity(0.5)),
+                                border: Border.all(
+                                  color: Colors.amber.withOpacity(0.5),
+                                ),
                               ),
                               child: const Text(
                                 '✎ Edited',
@@ -556,6 +992,36 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                               ),
                             ),
                           ],
+                          if (!isCalculation)
+                            TextButton.icon(
+                              onPressed: () =>
+                                  _setBillStored(context, bill, !bill.isStored),
+                              icon: Icon(
+                                bill.isStored
+                                    ? Icons.bookmark
+                                    : Icons.bookmark_border,
+                                size: 16,
+                              ),
+                              label: Text(bill.isStored ? 'STORED' : 'STORE'),
+                              style: TextButton.styleFrom(
+                                foregroundColor: bill.isStored
+                                    ? Colors.amber
+                                    : Colors.white70,
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 6,
+                                ),
+                              ),
+                            ),
+                          if (bill.isStored)
+                            IconButton(
+                              tooltip: 'Delete stored bill',
+                              icon: const Icon(
+                                Icons.delete_outline,
+                                color: Colors.redAccent,
+                                size: 20,
+                              ),
+                              onPressed: () => _deleteStoredBill(context, bill),
+                            ),
                         ],
                       ),
                     ),
@@ -566,11 +1032,7 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                   ],
                 ),
                 Text(
-                  '${bill.date}  ${bill.time}  · ${
-                    (bill.isEdited && bill.originalOperator != null && bill.originalOperator != bill.operatorName)
-                    ? "${bill.originalOperator} / Edited by ${bill.operatorName}"
-                    : bill.operatorName
-                  }',
+                  '${bill.date}  ${bill.time}  · ${(bill.isEdited && bill.originalOperator != null && bill.originalOperator != bill.operatorName) ? "${bill.originalOperator} / Edited by ${bill.operatorName}" : bill.operatorName}',
                   style: const TextStyle(color: Colors.white70),
                 ),
                 if (isCalculation)
@@ -586,25 +1048,53 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text('Type: Calculated Amount', style: TextStyle(fontSize: 12, color: Colors.purpleAccent)),
+                        const Text(
+                          'Type: Calculated Amount',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.purpleAccent,
+                          ),
+                        ),
                         if (bill.itemsJson.isNotEmpty)
                           Text(
                             'Expression: ${bill.itemsJson.first['value'] ?? ""}',
-                            style: const TextStyle(fontSize: 14, color: Colors.white, fontWeight: FontWeight.w500),
+                            style: const TextStyle(
+                              fontSize: 14,
+                              color: Colors.white,
+                              fontWeight: FontWeight.w500,
+                            ),
                           ),
                       ],
                     ),
                   )
                 else ...[
                   if (bill.apartmentName != null)
-                    Text('Delivery: ${bill.apartmentName}, ${bill.blockAndDoor ?? ''}', style: const TextStyle(color: Colors.white60)),
-                  Text('Payment: ${bill.paymentMode}', style: const TextStyle(color: Colors.white60)),
+                    Text(
+                      'Delivery: ${bill.apartmentName}, ${bill.blockAndDoor ?? ''}',
+                      style: const TextStyle(color: Colors.white60),
+                    ),
+                  Text(
+                    'Payment: ${bill.paymentMode}',
+                    style: const TextStyle(color: Colors.white60),
+                  ),
                 ],
                 const Divider(height: 32, color: Colors.white10),
                 if (!isCalculation)
-                  const Text('Items:', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white70)),
+                  const Text(
+                    'Items:',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white70,
+                    ),
+                  ),
                 if (isCalculation)
-                  const Text('Details:', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white70)),
+                  const Text(
+                    'Details:',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white70,
+                    ),
+                  ),
                 const SizedBox(height: 8),
                 Expanded(
                   child: ListView.builder(
@@ -618,7 +1108,10 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                           contentPadding: EdgeInsets.zero,
                           title: Text(
                             item['name'] as String,
-                            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w500),
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w500,
+                            ),
                           ),
                           subtitle: Text(
                             item['value'] as String,
@@ -626,16 +1119,34 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                           ),
                           trailing: Text(
                             'Rs.${(item['price'] as num?)?.toStringAsFixed(2) ?? "0.00"}',
-                            style: const TextStyle(color: Colors.purpleAccent, fontWeight: FontWeight.bold),
+                            style: const TextStyle(
+                              color: Colors.purpleAccent,
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
                         );
                       } else {
                         return ListTile(
                           dense: true,
                           contentPadding: EdgeInsets.zero,
-                          title: Text(item['name'] as String, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w500)),
-                          subtitle: Text('${item['weight']} ${item['unit']} × Rs.${item['price']}', style: const TextStyle(color: Colors.white60)),
-                          trailing: Text('Rs.${item['total']}', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                          title: Text(
+                            item['name'] as String,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                          subtitle: Text(
+                            '${item['weight']} ${item['unit']} × Rs.${item['price']}',
+                            style: const TextStyle(color: Colors.white60),
+                          ),
+                          trailing: Text(
+                            'Rs.${item['total']}',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
                         );
                       }
                     },
@@ -652,12 +1163,19 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                         children: [
                           Text(
                             isCalculation ? 'Result:' : 'Grand Total:',
-                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Colors.white),
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 18,
+                              color: Colors.white,
+                            ),
                           ),
                           if (!isCalculation)
                             Text(
                               '${bill.itemsJson.length} Products',
-                              style: const TextStyle(fontSize: 12, color: Colors.white54),
+                              style: const TextStyle(
+                                fontSize: 12,
+                                color: Colors.white54,
+                              ),
                             ),
                         ],
                       ),
@@ -666,7 +1184,9 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                         style: TextStyle(
                           fontWeight: FontWeight.bold,
                           fontSize: 24,
-                          color: isCalculation ? Colors.purpleAccent : const Color(0xFF2ECC71),
+                          color: isCalculation
+                              ? Colors.purpleAccent
+                              : const Color(0xFF2ECC71),
                         ),
                       ),
                     ],
@@ -683,20 +1203,32 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                             builder: (context) {
                               final scheme = Theme.of(context).colorScheme;
                               return Container(
-                                padding: const EdgeInsets.symmetric(vertical: 14),
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 14,
+                                ),
                                 decoration: BoxDecoration(
                                   color: scheme.primary.withOpacity(0.1),
                                   borderRadius: BorderRadius.circular(12),
-                                  border: Border.all(color: scheme.primary.withOpacity(0.3)),
+                                  border: Border.all(
+                                    color: scheme.primary.withOpacity(0.3),
+                                  ),
                                 ),
                                 child: Row(
                                   mainAxisAlignment: MainAxisAlignment.center,
                                   children: [
-                                    Icon(Icons.print_outlined, color: scheme.primary, size: 16),
+                                    Icon(
+                                      Icons.print_outlined,
+                                      color: scheme.primary,
+                                      size: 16,
+                                    ),
                                     const SizedBox(width: 4),
                                     Text(
                                       'REPRINT',
-                                      style: TextStyle(color: scheme.primary, fontWeight: FontWeight.bold, fontSize: 11),
+                                      style: TextStyle(
+                                        color: scheme.primary,
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 11,
+                                      ),
                                     ),
                                   ],
                                 ),
@@ -714,16 +1246,26 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                             decoration: BoxDecoration(
                               color: Colors.greenAccent.withOpacity(0.1),
                               borderRadius: BorderRadius.circular(12),
-                              border: Border.all(color: Colors.greenAccent.withOpacity(0.3)),
+                              border: Border.all(
+                                color: Colors.greenAccent.withOpacity(0.3),
+                              ),
                             ),
                             child: const Row(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
-                                Icon(Icons.share_outlined, color: Colors.greenAccent, size: 16),
+                                Icon(
+                                  Icons.share_outlined,
+                                  color: Colors.greenAccent,
+                                  size: 16,
+                                ),
                                 SizedBox(width: 4),
                                 Text(
                                   'SHARE',
-                                  style: TextStyle(color: Colors.greenAccent, fontWeight: FontWeight.bold, fontSize: 11),
+                                  style: TextStyle(
+                                    color: Colors.greenAccent,
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 11,
+                                  ),
                                 ),
                               ],
                             ),
@@ -739,16 +1281,26 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                             decoration: BoxDecoration(
                               color: Colors.orange.withOpacity(0.1),
                               borderRadius: BorderRadius.circular(12),
-                              border: Border.all(color: Colors.orange.withOpacity(0.3)),
+                              border: Border.all(
+                                color: Colors.orange.withOpacity(0.3),
+                              ),
                             ),
                             child: const Row(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
-                                Icon(Icons.edit_note_outlined, color: Colors.orange, size: 16),
+                                Icon(
+                                  Icons.edit_note_outlined,
+                                  color: Colors.orange,
+                                  size: 16,
+                                ),
                                 SizedBox(width: 4),
                                 Text(
                                   'ADD ON',
-                                  style: TextStyle(color: Colors.orange, fontWeight: FontWeight.bold, fontSize: 11),
+                                  style: TextStyle(
+                                    color: Colors.orange,
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 11,
+                                  ),
                                 ),
                               ],
                             ),
@@ -768,12 +1320,18 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                           decoration: BoxDecoration(
                             color: Colors.purple.withOpacity(0.1),
                             borderRadius: BorderRadius.circular(12),
-                            border: Border.all(color: Colors.purple.withOpacity(0.3)),
+                            border: Border.all(
+                              color: Colors.purple.withOpacity(0.3),
+                            ),
                           ),
                           child: Row(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              const Icon(Icons.edit_note_outlined, color: Colors.purpleAccent, size: 20),
+                              const Icon(
+                                Icons.edit_note_outlined,
+                                color: Colors.purpleAccent,
+                                size: 20,
+                              ),
                               const SizedBox(width: 8),
                               const Text(
                                 'EDIT EXPRESSION',
@@ -802,7 +1360,7 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
   void _handleShareBill(BuildContext context, BillingHistoryRecord bill) {
     final shop = ref.read(shopInfoProvider);
     final buffer = StringBuffer();
-    
+
     buffer.writeln('━━━━━━━━━━━━━━━━━━━━━━━━');
     buffer.writeln('  *${shop.shopName.toUpperCase()}*');
     if (shop.address.isNotEmpty) buffer.writeln(shop.address);
@@ -813,17 +1371,17 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
     buffer.writeln('Operator: ${bill.operatorName}');
     buffer.writeln('--------------------------------');
     buffer.writeln('*ITEMS*          *QTY*     *TOTAL*');
-    
+
     for (final item in bill.itemsJson) {
       final nameStr = (item['name'] as String? ?? 'Item');
-      final name = nameStr.length > 14 
-          ? nameStr.substring(0, 14) 
+      final name = nameStr.length > 14
+          ? nameStr.substring(0, 14)
           : nameStr.padRight(14);
       final qty = '${item['weight']}${item['unit']}'.padRight(8);
       final total = '₹${item['total']}';
       buffer.writeln('$name $qty $total');
     }
-    
+
     buffer.writeln('--------------------------------');
     buffer.writeln('Total Items: ${bill.itemsJson.length}');
     buffer.writeln('*Grand Total: ₹${bill.grandTotal.toStringAsFixed(2)}*');
@@ -831,25 +1389,28 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
     buffer.writeln('━━━━━━━━━━━━━━━━━━━━━━━━');
     buffer.writeln(shop.greeting);
     if (shop.extraInfo.isNotEmpty) buffer.writeln(shop.extraInfo);
-    
+
     Share.share(buffer.toString(), subject: 'Bill Receipt ${bill.billNumber}');
   }
 
-  Future<void> _handleReprintBill(BuildContext context, BillingHistoryRecord billRecord) async {
+  Future<void> _handleReprintBill(
+    BuildContext context,
+    BillingHistoryRecord billRecord,
+  ) async {
     // Show loading dialog
     if (!mounted) return;
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (context) => const Center(
-        child: CircularProgressIndicator(),
-      ),
+      builder: (context) => const Center(child: CircularProgressIndicator()),
     );
 
     try {
       // Reconstruct Bill object from BillingHistoryRecord
-      final cartItems = billRecord.itemsJson.map((item) => CartItem.fromJson(item)).toList();
-      
+      final cartItems = billRecord.itemsJson
+          .map((item) => CartItem.fromJson(item))
+          .toList();
+
       // Read current shop info so the header prints correctly on reprint
       final shop = ref.read(shopInfoProvider);
 
@@ -911,8 +1472,10 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
 
   void _handleEditBill(BuildContext context, BillingHistoryRecord billRecord) {
     // Reconstruct Bill object
-    final cartItems = billRecord.itemsJson.map((item) => CartItem.fromJson(item)).toList();
-    
+    final cartItems = billRecord.itemsJson
+        .map((item) => CartItem.fromJson(item))
+        .toList();
+
     final bill = Bill(
       billNumber: billRecord.billNumber,
       date: billRecord.date,
@@ -932,31 +1495,36 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
     // Load into cart and switch tab
     ref.read(cartProvider.notifier).loadBillIntoCart(bill);
     ref.read(navigationProvider.notifier).setIndex(0);
-    
+
     // Close modal and history screen
     Navigator.pop(context); // Close detail modal
     Navigator.pop(context); // Close history list screen
-    
+
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('Editing Bill ${bill.billNumber} in Cart ${ref.read(cartProvider).activeIndex + 1}'),
+        content: Text(
+          'Editing Bill ${bill.billNumber} in Cart ${ref.read(cartProvider).activeIndex + 1}',
+        ),
         backgroundColor: Colors.orange,
       ),
     );
   }
 
-  void _handleEditCalculation(BuildContext context, BillingHistoryRecord billRecord) {
+  void _handleEditCalculation(
+    BuildContext context,
+    BillingHistoryRecord billRecord,
+  ) {
     if (billRecord.itemsJson.isEmpty) return;
-    
+
     // The expression is stored as "12+34=46" in the value field, or just "12+34"
     final rawValue = billRecord.itemsJson.first['value'] as String? ?? '';
-    
+
     // We only want the expression part before the equals sign
     final expression = rawValue.split('=').first;
-    
+
     Navigator.pop(context); // Close detail modal
     Navigator.pop(context); // Close history list screen
-    
+
     Navigator.push(
       context,
       MaterialPageRoute(
@@ -969,12 +1537,20 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
     );
   }
 
-  void _showOperatorTallyDialog(BuildContext context, String operatorName, Map<String, List<BillingHistoryRecord>> history) {
+  void _showOperatorTallyDialog(
+    BuildContext context,
+    String operatorName,
+    Map<String, List<BillingHistoryRecord>> history,
+  ) {
     final tally = <String, double>{};
     for (final key in _windowKeys) {
       final bills = history[key] ?? [];
       final total = bills
-          .where((b) => b.operatorName == operatorName || b.originalOperator == operatorName)
+          .where(
+            (b) =>
+                b.operatorName == operatorName ||
+                b.originalOperator == operatorName,
+          )
           .fold<double>(0, (sum, b) => sum + b.grandTotal);
       tally[key] = total;
     }
@@ -991,7 +1567,12 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
           children: [
             const Icon(Icons.person, color: Colors.blueAccent),
             const SizedBox(width: 12),
-            Expanded(child: Text(operatorName, style: const TextStyle(color: Colors.white))),
+            Expanded(
+              child: Text(
+                operatorName,
+                style: const TextStyle(color: Colors.white),
+              ),
+            ),
           ],
         ),
         content: Column(
@@ -1007,7 +1588,11 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                   Text(label, style: const TextStyle(color: Colors.white70)),
                   Text(
                     'RS ${amount.toStringAsFixed(0)}',
-                    style: const TextStyle(color: Colors.blueAccent, fontWeight: FontWeight.bold, fontSize: 16),
+                    style: const TextStyle(
+                      color: Colors.blueAccent,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                    ),
                   ),
                 ],
               ),
@@ -1031,7 +1616,12 @@ class _SummaryCard extends StatelessWidget {
   final IconData icon;
   final Color color;
 
-  const _SummaryCard({required this.label, required this.value, required this.icon, required this.color});
+  const _SummaryCard({
+    required this.label,
+    required this.value,
+    required this.icon,
+    required this.color,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -1047,10 +1637,20 @@ class _SummaryCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text(label, style: TextStyle(fontSize: 11, color: Colors.white.withOpacity(0.5))),
+                Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: Colors.white.withOpacity(0.5),
+                  ),
+                ),
                 Text(
                   value,
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: color),
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                    color: color,
+                  ),
                 ),
               ],
             ),

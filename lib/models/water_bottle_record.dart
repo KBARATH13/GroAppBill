@@ -1,7 +1,4 @@
-enum BottleType {
-  normal,
-  bisleri,
-}
+enum BottleType { normal, bisleri }
 
 extension BottleTypeLabel on BottleType {
   String get label {
@@ -23,10 +20,7 @@ extension BottleTypeLabel on BottleType {
   }
 }
 
-enum PaymentMethod {
-  advancePaid,
-  emptyBottle,
-}
+enum PaymentMethod { advancePaid, emptyBottle }
 
 extension PaymentMethodLabel on PaymentMethod {
   String get label {
@@ -67,15 +61,17 @@ class WaterBottlePurchaseItem {
   }
 
   Map<String, dynamic> toJson() => {
-        'bottleType': bottleType.name,
-        'paymentMethod': paymentMethod.name,
-        'quantity': quantity,
-        'depositAmount': depositAmount,
-      };
+    'bottleType': bottleType.name,
+    'paymentMethod': paymentMethod.name,
+    'quantity': quantity,
+    'depositAmount': depositAmount,
+  };
 
   factory WaterBottlePurchaseItem.fromJson(Map<String, dynamic> json) {
-    final typeString = (json['bottleType'] as String?) ?? BottleType.normal.name;
-    final paymentString = (json['paymentMethod'] as String?) ?? PaymentMethod.advancePaid.name;
+    final typeString =
+        (json['bottleType'] as String?) ?? BottleType.normal.name;
+    final paymentString =
+        (json['paymentMethod'] as String?) ?? PaymentMethod.advancePaid.name;
     final quantity = (json['quantity'] as num?)?.toInt() ?? 1;
     final bottleType = BottleType.values.firstWhere(
       (value) => value.name == typeString,
@@ -85,8 +81,11 @@ class WaterBottlePurchaseItem {
       (value) => value.name == paymentString,
       orElse: () => PaymentMethod.advancePaid,
     );
-    final depositAmount = (json['depositAmount'] as num?)?.toDouble() ??
-        (paymentMethod == PaymentMethod.advancePaid ? bottleType.defaultDeposit * quantity : 0.0);
+    final depositAmount =
+        (json['depositAmount'] as num?)?.toDouble() ??
+        (paymentMethod == PaymentMethod.advancePaid
+            ? bottleType.defaultDeposit * quantity
+            : 0.0);
 
     return WaterBottlePurchaseItem(
       bottleType: bottleType,
@@ -102,49 +101,70 @@ class WaterBottleRecord {
   final String customerName;
   final String address;
   final List<WaterBottlePurchaseItem> items;
+  final DateTime createdAt;
 
   WaterBottleRecord({
     required this.id,
     required this.customerName,
     required this.address,
     required this.items,
-  });
+    DateTime? createdAt,
+  }) : createdAt = createdAt ?? DateTime.now();
 
   WaterBottleRecord copyWith({
     String? id,
     String? customerName,
     String? address,
     List<WaterBottlePurchaseItem>? items,
+    DateTime? createdAt,
   }) {
     return WaterBottleRecord(
       id: id ?? this.id,
       customerName: customerName ?? this.customerName,
       address: address ?? this.address,
       items: items ?? this.items,
+      createdAt: createdAt ?? this.createdAt,
     );
   }
 
   int get totalBottles => items.fold(0, (sum, item) => sum + item.quantity);
 
-  double get totalDeposit => items.fold(0, (sum, item) => sum + item.depositAmount);
+  double get totalDeposit =>
+      items.fold(0, (sum, item) => sum + item.depositAmount);
 
   Map<String, dynamic> toJson() => {
-        'id': id,
-        'customerName': customerName,
-        'address': address,
-        'items': items.map((item) => item.toJson()).toList(),
-      };
+    'id': id,
+    'customerName': customerName,
+    'address': address,
+    'items': items.map((item) => item.toJson()).toList(),
+    'createdAt': createdAt.toIso8601String(),
+  };
 
   factory WaterBottleRecord.fromJson(Map<String, dynamic> json) {
     final itemsJson = (json['items'] as List<dynamic>?) ?? <dynamic>[];
+    final id = json['id'] as String? ?? '';
+    final createdAtValue = json['createdAt'];
+    final createdAt = createdAtValue is String
+        ? DateTime.tryParse(createdAtValue)
+        : createdAtValue is int
+        ? DateTime.fromMillisecondsSinceEpoch(createdAtValue)
+        : int.tryParse(id).letDateTime;
     return WaterBottleRecord(
-      id: json['id'] as String? ?? DateTime.now().millisecondsSinceEpoch.toString(),
+      id: id.isEmpty ? DateTime.now().millisecondsSinceEpoch.toString() : id,
       customerName: json['customerName'] as String? ?? '',
       address: json['address'] as String? ?? '',
       items: itemsJson
-          .map((item) => WaterBottlePurchaseItem.fromJson(item as Map<String, dynamic>))
+          .map(
+            (item) =>
+                WaterBottlePurchaseItem.fromJson(item as Map<String, dynamic>),
+          )
           .toList(),
+      createdAt: createdAt ?? DateTime.now(),
     );
   }
 }
 
+extension on int? {
+  DateTime? get letDateTime =>
+      this == null ? null : DateTime.fromMillisecondsSinceEpoch(this!);
+}

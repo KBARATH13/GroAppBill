@@ -33,6 +33,18 @@ class _BillingScreenState extends ConsumerState<BillingScreen> {
   final GlobalKey _searchBarKey = GlobalKey();
   late FocusNode _searchFocusNode;
 
+  static const List<BarcodeFormat> _supportedBarcodeFormats = [
+    BarcodeFormat.code128,
+    BarcodeFormat.code39,
+    BarcodeFormat.code93,
+    BarcodeFormat.codabar,
+    BarcodeFormat.ean13,
+    BarcodeFormat.ean8,
+    BarcodeFormat.itf,
+    BarcodeFormat.upcA,
+    BarcodeFormat.upcE,
+  ];
+
   @override
   void initState() {
     super.initState();
@@ -50,7 +62,7 @@ class _BillingScreenState extends ConsumerState<BillingScreen> {
     final delivery = ref.read(deliveryInfoProvider);
     _apartmentController = TextEditingController(text: delivery.apartmentName);
     _blockDoorController = TextEditingController(text: delivery.blockAndDoor);
-    
+
     _operatorController = TextEditingController(
       text: ref.read(userProvider) ?? '',
     );
@@ -69,21 +81,23 @@ class _BillingScreenState extends ConsumerState<BillingScreen> {
   }
 
   // Always scrolls the search bar to the very top of the viewport.
-  // This approach is the most efficient as it uses the framework's 
+  // This approach is the most efficient as it uses the framework's
   // built-in rendering logic to compute the exact reveal offset.
   void _scrollToSearchBar() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final ctx = _searchBarKey.currentContext;
       if (ctx == null || !_scrollController.hasClients) return;
-      
+
       final renderObject = ctx.findRenderObject();
       if (renderObject == null) return;
 
       final viewport = RenderAbstractViewport.maybeOf(renderObject);
       if (viewport != null) {
         // alignment 0.0 means "scroll until the top of the widget is at the top of the viewport"
-        final revealOffset = viewport.getOffsetToReveal(renderObject, 0.0).offset;
-        
+        final revealOffset = viewport
+            .getOffsetToReveal(renderObject, 0.0)
+            .offset;
+
         _scrollController.animateTo(
           revealOffset.clamp(0.0, _scrollController.position.maxScrollExtent),
           duration: const Duration(milliseconds: 300),
@@ -120,17 +134,19 @@ class _BillingScreenState extends ConsumerState<BillingScreen> {
 
     final product = overriddenProduct ?? _selectedProduct;
     if (product == null) return;
-    
+
     final productName = product.name;
     // Safely get original product id even if overridden
     final productId = _selectedProduct?.id ?? product.id;
-    
+
     ref.read(productsProvider.notifier).incrementUsage(productId);
-    ref.read(cartProvider.notifier).addItem(
-      product, 
-      quantity, 
-      isPriceOverridden: overriddenProduct != null,
-    );
+    ref
+        .read(cartProvider.notifier)
+        .addItem(
+          product,
+          quantity,
+          isPriceOverridden: overriddenProduct != null,
+        );
     _quantityController.clear();
     setState(() => _selectedProduct = null);
 
@@ -174,7 +190,7 @@ class _BillingScreenState extends ConsumerState<BillingScreen> {
     if (result != null && mounted) {
       _quantityController.text = result['quantity'] ?? '1';
       final newPriceStr = result['price'];
-      
+
       if (newPriceStr != null) {
         final newPrice = double.tryParse(newPriceStr);
         if (newPrice != null && newPrice != product.price) {
@@ -182,7 +198,7 @@ class _BillingScreenState extends ConsumerState<BillingScreen> {
           return;
         }
       }
-      
+
       _addToCart();
     }
   }
@@ -195,9 +211,11 @@ class _BillingScreenState extends ConsumerState<BillingScreen> {
 
     if (product != null) {
       setState(() => _selectedProduct = product);
-      
+
       final cartState = ref.read(cartProvider);
-      final isInCart = cartState.activeCart.any((item) => item.product.id == product.id);
+      final isInCart = cartState.activeCart.any(
+        (item) => item.product.id == product.id,
+      );
 
       // Display numpad ONLY when the same product is scanned again (i.e., already in cart)
       if (isInCart) {
@@ -210,7 +228,7 @@ class _BillingScreenState extends ConsumerState<BillingScreen> {
         HapticFeedback.lightImpact();
         ref.read(productsProvider.notifier).incrementUsage(product.id);
         ref.read(cartProvider.notifier).addItem(product, 1.0);
-        
+
         if (mounted) {
           messenger.showSnackBar(
             SnackBar(
@@ -232,14 +250,16 @@ class _BillingScreenState extends ConsumerState<BillingScreen> {
         }
         return;
       }
-      
+
       await ProductFormDialog.showProductNotFoundDialog(context, code);
     }
   }
 
   void _openBarcodeScanner() {
     setState(() => _isProcessingScan = false);
-    final MobileScannerController dialogController = MobileScannerController();
+    final MobileScannerController dialogController = MobileScannerController(
+      formats: _supportedBarcodeFormats,
+    );
 
     showDialog(
       context: context,
@@ -249,39 +269,80 @@ class _BillingScreenState extends ConsumerState<BillingScreen> {
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             const Text('Scan Barcode'),
-            Icon(Icons.qr_code_scanner, color: Theme.of(context).colorScheme.secondary),
+            Icon(
+              Icons.qr_code_scanner,
+              color: Theme.of(context).colorScheme.secondary,
+            ),
           ],
         ),
-        content: SizedBox(
-          width: double.maxFinite,
-          height: 300,
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(12),
-            child: MobileScanner(
-              controller: dialogController,
-              onDetect: (capture) async {
-                if (_isProcessingScan) return;
-                
-                final List<Barcode> barcodes = capture.barcodes;
-                for (final barcode in barcodes) {
-                  if (barcode.rawValue != null) {
-                    _isProcessingScan = true;
-
-                    
-                    // Handle scan (might show a dialog)
-                    await _onBarcodeScanned(barcode.rawValue!);
-                    
-                    // Small delay to prevent immediate re-detection of the same barcode
-                    await Future.delayed(const Duration(milliseconds: 1500));
-                    
-                    // Reset flag for next scan
-                    _isProcessingScan = false;
-                    break;
-                  }
-                }
-              },
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: double.maxFinite,
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                color: Theme.of(
+                  dialogCtx,
+                ).colorScheme.primary.withOpacity(0.12),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(Icons.info_outline, size: 18),
+                  SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Place the camera directly over a 1D barcode. QR codes and other codes are not supported.',
+                      style: TextStyle(fontSize: 12),
+                    ),
+                  ),
+                ],
+              ),
             ),
-          ),
+            const SizedBox(height: 10),
+            SizedBox(
+              width: double.maxFinite,
+              height: 300,
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: MobileScanner(
+                  controller: dialogController,
+                  onDetect: (capture) async {
+                    if (_isProcessingScan) return;
+
+                    final barcode = capture.barcodes
+                        .cast<Barcode?>()
+                        .firstWhere(
+                          (candidate) => candidate != null,
+                          orElse: () => null,
+                        );
+
+                    if (barcode == null || barcode.rawValue == null) return;
+
+                    if (!_supportedBarcodeFormats.contains(barcode.format)) {
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text(
+                              'Unsupported code. Place the scanner over a barcode only.',
+                            ),
+                          ),
+                        );
+                      }
+                      return;
+                    }
+
+                    _isProcessingScan = true;
+                    await _onBarcodeScanned(barcode.rawValue!);
+                    await Future.delayed(const Duration(milliseconds: 1500));
+                    _isProcessingScan = false;
+                  },
+                ),
+              ),
+            ),
+          ],
         ),
         actions: [
           TextButton(
@@ -304,6 +365,12 @@ class _BillingScreenState extends ConsumerState<BillingScreen> {
     final products = ref.watch(productsProvider);
     final categories = ref.watch(categoriesProvider);
     final scheme = Theme.of(context).colorScheme;
+    final sortedCategories = sortCategoriesForDisplay(categories, products);
+
+    final dashboardCategories = <String>['All'];
+    for (final category in sortedCategories) {
+      if (category != 'All') dashboardCategories.add(category);
+    }
 
     final filteredProducts = products.where((p) {
       final matchesSearch =
@@ -316,7 +383,9 @@ class _BillingScreenState extends ConsumerState<BillingScreen> {
 
     // Apply Sorting
     if (_sortBy == 'Name (A-Z)') {
-      filteredProducts.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+      filteredProducts.sort(
+        (a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()),
+      );
     } else if (_sortBy == 'Price: Low to High') {
       filteredProducts.sort((a, b) => a.price.compareTo(b.price));
     } else if (_sortBy == 'Price: High to Low') {
@@ -374,7 +443,10 @@ class _BillingScreenState extends ConsumerState<BillingScreen> {
                         children: [
                           if (_searchTerm.isNotEmpty)
                             IconButton(
-                              icon: const Icon(Icons.clear, color: Colors.white70),
+                              icon: const Icon(
+                                Icons.clear,
+                                color: Colors.white70,
+                              ),
                               onPressed: () {
                                 _searchController.clear();
                                 setState(() => _searchTerm = '');
@@ -382,14 +454,19 @@ class _BillingScreenState extends ConsumerState<BillingScreen> {
                               },
                             ),
                           IconButton(
-                            icon: const Icon(Icons.qr_code_scanner, color: Colors.white),
+                            icon: const Icon(
+                              Icons.qr_code_scanner,
+                              color: Colors.white,
+                            ),
                             onPressed: _openBarcodeScanner,
                           ),
                         ],
                       ),
                       enabledBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
-                        borderSide: BorderSide(color: Colors.white.withOpacity(0.3)),
+                        borderSide: BorderSide(
+                          color: Colors.white.withOpacity(0.3),
+                        ),
                       ),
                       focusedBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
@@ -403,16 +480,26 @@ class _BillingScreenState extends ConsumerState<BillingScreen> {
                 // === Most Used Items ===
                 if (_searchTerm.isEmpty) ...[
                   () {
-                    final sortedUsage = List<Product>.from(ref.read(productsProvider))
-                      ..sort((a, b) => b.usageCount.compareTo(a.usageCount));
-                    final mostUsed = sortedUsage.where((p) => p.usageCount > 0).take(5).toList();
+                    final sortedUsage = List<Product>.from(
+                      ref.read(productsProvider),
+                    )..sort((a, b) => b.usageCount.compareTo(a.usageCount));
+                    final mostUsed = sortedUsage
+                        .where((p) => p.usageCount > 0)
+                        .take(5)
+                        .toList();
 
                     if (mostUsed.isNotEmpty) {
                       return Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text('Most Used Items',
-                            style: Theme.of(context).textTheme.titleMedium?.copyWith(color: Colors.white70, fontWeight: FontWeight.bold)),
+                          Text(
+                            'Most Used Items',
+                            style: Theme.of(context).textTheme.titleMedium
+                                ?.copyWith(
+                                  color: Colors.white70,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                          ),
                           const SizedBox(height: 8),
                           SizedBox(
                             height: 110,
@@ -423,9 +510,17 @@ class _BillingScreenState extends ConsumerState<BillingScreen> {
                                 final product = mostUsed[index];
                                 return GestureDetector(
                                   onTap: () {
-                                    if (_operatorController.text.trim().isEmpty) {
-                                      ScaffoldMessenger.of(context).showSnackBar(
-                                        const SnackBar(content: Text('⚠ Please enter Operator Name')),
+                                    if (_operatorController.text
+                                        .trim()
+                                        .isEmpty) {
+                                      ScaffoldMessenger.of(
+                                        context,
+                                      ).showSnackBar(
+                                        const SnackBar(
+                                          content: Text(
+                                            '⚠ Please enter Operator Name',
+                                          ),
+                                        ),
                                       );
                                       return;
                                     }
@@ -441,16 +536,40 @@ class _BillingScreenState extends ConsumerState<BillingScreen> {
                                         width: 110,
                                         padding: const EdgeInsets.all(12.0),
                                         child: Column(
-                                          crossAxisAlignment: CrossAxisAlignment.start,
-                                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          mainAxisAlignment:
+                                              MainAxisAlignment.spaceBetween,
                                           children: [
-                                            Text(product.name, maxLines: 2, overflow: TextOverflow.ellipsis,
-                                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.white)),
+                                            Text(
+                                              product.name,
+                                              maxLines: 2,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: const TextStyle(
+                                                fontWeight: FontWeight.bold,
+                                                fontSize: 13,
+                                                color: Colors.white,
+                                              ),
+                                            ),
                                             Column(
-                                              crossAxisAlignment: CrossAxisAlignment.start,
+                                              crossAxisAlignment:
+                                                  CrossAxisAlignment.start,
                                               children: [
-                                                Text('₹${product.price}', style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
-                                                Text('per ${product.unit}', style: const TextStyle(fontSize: 10, color: Colors.white70)),
+                                                Text(
+                                                  '₹${product.price}',
+                                                  style: const TextStyle(
+                                                    color: Colors.white,
+                                                    fontSize: 16,
+                                                    fontWeight: FontWeight.bold,
+                                                  ),
+                                                ),
+                                                Text(
+                                                  'per ${product.unit}',
+                                                  style: const TextStyle(
+                                                    fontSize: 10,
+                                                    color: Colors.white70,
+                                                  ),
+                                                ),
                                               ],
                                             ),
                                           ],
@@ -470,76 +589,156 @@ class _BillingScreenState extends ConsumerState<BillingScreen> {
                   }(),
                 ],
 
-                // === Category Filters ===
-                SizedBox(
-                  height: 44,
-                  child: ListView.builder(
-                    scrollDirection: Axis.horizontal,
-                    itemCount: categories.length + 1,
-                    itemBuilder: (context, index) {
-                      final category = index == 0 ? 'All' : categories[index - 1];
-                      final isSelected = _selectedCategory == category;
-                      return Padding(
-                        padding: const EdgeInsets.only(right: 8.0),
-                        child: GestureDetector(
-                          onTap: () => setState(() => _selectedCategory = category),
-                          child: GlassContainer(
-                            color: isSelected ? scheme.primary.withOpacity(0.4) : Colors.white.withOpacity(0.12),
-                            borderRadius: 12,
-                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                            child: Center(
-                              child: Text(
-                                category,
-                                style: TextStyle(
-                                  fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                                  color: Colors.white,
+                if (products.isNotEmpty) ...[
+                  Text(
+                    'Category Overview',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      color: Colors.white70,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  SizedBox(
+                    height: 94,
+                    child: ListView.builder(
+                      scrollDirection: Axis.horizontal,
+                      itemCount: dashboardCategories.length,
+                      itemBuilder: (context, index) {
+                        final category = dashboardCategories[index];
+                        final count = category == 'All'
+                            ? products.length
+                            : products
+                                  .where(
+                                    (product) => product.category == category,
+                                  )
+                                  .length;
+                        final isSelected = _selectedCategory == category;
+
+                        return Padding(
+                          padding: const EdgeInsets.only(right: 10.0),
+                          child: GestureDetector(
+                            onTap: () =>
+                                setState(() => _selectedCategory = category),
+                            child: GlassContainer(
+                              color: isSelected
+                                  ? scheme.primary.withOpacity(0.45)
+                                  : Colors.white.withOpacity(0.12),
+                              borderRadius: 16,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 10,
+                              ),
+                              child: SizedBox(
+                                width: 112,
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  mainAxisAlignment:
+                                      MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Text(
+                                      category,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.white,
+                                        fontSize: 12,
+                                      ),
+                                    ),
+                                    Text(
+                                      '$count',
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 26,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ),
                             ),
                           ),
-                        ),
-                      );
-                    },
+                        );
+                      },
+                    ),
                   ),
-                ),
-                const SizedBox(height: 20),
+                  const SizedBox(height: 14),
+                ],
+
+                const SizedBox(height: 6),
 
                 // === Products Grid Header ===
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text('Select Product', style: Theme.of(context).textTheme.titleLarge),
-                    SizedBox(
-                      width: 150,
-                      child: DropdownButtonHideUnderline(
-                        child: DropdownButtonFormField<String>(
-                          dropdownColor: scheme.surfaceContainer,
-                          style: const TextStyle(color: Colors.white, fontSize: 12),
-                          initialValue: _sortBy,
-                          isDense: true,
-                          decoration: InputDecoration(
-                            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                            enabledBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
-                              borderSide: BorderSide(color: Colors.white.withOpacity(0.3)),
-                            ),
-                            focusedBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
-                              borderSide: const BorderSide(color: Colors.white),
-                            ),
-                            labelText: 'Sort',
-                            labelStyle: const TextStyle(color: Colors.white70),
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    final isCompact = constraints.maxWidth < 420;
+                    return Wrap(
+                      alignment: WrapAlignment.spaceBetween,
+                      runSpacing: 8,
+                      children: [
+                        SizedBox(
+                          width: isCompact
+                              ? constraints.maxWidth
+                              : constraints.maxWidth - 158,
+                          child: Text(
+                            'Select Product',
+                            style: Theme.of(context).textTheme.titleLarge,
                           ),
-                          items: ['Name (A-Z)', 'Price: Low to High', 'Price: High to Low']
-                              .map((s) => DropdownMenuItem(value: s, child: Text(s)))
-                              .toList(),
-                          onChanged: (v) {
-                            if (v != null) setState(() => _sortBy = v);
-                          },
                         ),
-                      ),
-                    ),
-                  ],
+                        SizedBox(
+                          width: isCompact ? constraints.maxWidth : 150,
+                          child: DropdownButtonHideUnderline(
+                            child: DropdownButtonFormField<String>(
+                              dropdownColor: scheme.surfaceContainer,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 12,
+                              ),
+                              initialValue: _sortBy,
+                              isDense: true,
+                              decoration: InputDecoration(
+                                contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 8,
+                                ),
+                                enabledBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                  borderSide: BorderSide(
+                                    color: Colors.white.withOpacity(0.3),
+                                  ),
+                                ),
+                                focusedBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                  borderSide: const BorderSide(
+                                    color: Colors.white,
+                                  ),
+                                ),
+                                labelText: 'Sort',
+                                labelStyle: const TextStyle(
+                                  color: Colors.white70,
+                                ),
+                              ),
+                              items:
+                                  [
+                                        'Name (A-Z)',
+                                        'Price: Low to High',
+                                        'Price: High to Low',
+                                      ]
+                                      .map(
+                                        (s) => DropdownMenuItem(
+                                          value: s,
+                                          child: Text(s),
+                                        ),
+                                      )
+                                      .toList(),
+                              onChanged: (v) {
+                                if (v != null) setState(() => _sortBy = v);
+                              },
+                            ),
+                          ),
+                        ),
+                      ],
+                    );
+                  },
                 ),
                 const SizedBox(height: 12),
               ],
@@ -558,7 +757,8 @@ class _BillingScreenState extends ConsumerState<BillingScreen> {
             delegate: SliverChildBuilderDelegate(
               (context, index) {
                 final user = ref.watch(appUserProvider).valueOrNull;
-                final canAdd = user?.isAdmin == true || user?.canAddInventory == true;
+                final canAdd =
+                    user?.isAdmin == true || user?.canAddInventory == true;
 
                 if (canAdd && index == filteredProducts.length) {
                   return GestureDetector(
@@ -569,10 +769,20 @@ class _BillingScreenState extends ConsumerState<BillingScreen> {
                       child: const Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          Icon(Icons.add_circle_outline, size: 40, color: Colors.white),
+                          Icon(
+                            Icons.add_circle_outline,
+                            size: 40,
+                            color: Colors.white,
+                          ),
                           SizedBox(height: 4),
-                          Text('Add New',
-                            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
+                          Text(
+                            'Add New',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 12,
+                            ),
+                          ),
                         ],
                       ),
                     ),
@@ -583,7 +793,9 @@ class _BillingScreenState extends ConsumerState<BillingScreen> {
                   onTap: () {
                     if (_operatorController.text.trim().isEmpty) {
                       ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('⚠ Please enter Operator Name')),
+                        const SnackBar(
+                          content: Text('⚠ Please enter Operator Name'),
+                        ),
                       );
                       return;
                     }
@@ -598,13 +810,34 @@ class _BillingScreenState extends ConsumerState<BillingScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Text(product.name, maxLines: 2, overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.white)),
+                        Text(
+                          product.name,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 13,
+                            color: Colors.white,
+                          ),
+                        ),
                         Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text('₹${product.price}', style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
-                            Text('per ${product.unit}', style: const TextStyle(fontSize: 10, color: Colors.white70)),
+                            Text(
+                              '₹${product.price}',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            Text(
+                              'per ${product.unit}',
+                              style: const TextStyle(
+                                fontSize: 10,
+                                color: Colors.white70,
+                              ),
+                            ),
                           ],
                         ),
                       ],
@@ -612,13 +845,20 @@ class _BillingScreenState extends ConsumerState<BillingScreen> {
                   ),
                 );
               },
-              childCount: filteredProducts.length + ((ref.watch(appUserProvider).valueOrNull?.isAdmin == true || ref.watch(appUserProvider).valueOrNull?.canAddInventory == true) ? 1 : 0),
+              childCount:
+                  filteredProducts.length +
+                  ((ref.watch(appUserProvider).valueOrNull?.isAdmin == true ||
+                          ref
+                                  .watch(appUserProvider)
+                                  .valueOrNull
+                                  ?.canAddInventory ==
+                              true)
+                      ? 1
+                      : 0),
             ),
           ),
         ),
-        const SliverToBoxAdapter(
-          child: SizedBox(height: 100),
-        ),
+        const SliverToBoxAdapter(child: SizedBox(height: 100)),
       ],
     );
   }
@@ -631,4 +871,3 @@ class _BillingScreenState extends ConsumerState<BillingScreen> {
     );
   }
 }
-

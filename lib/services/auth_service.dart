@@ -70,8 +70,8 @@ class AuthService {
       password: password,
     );
     final uid = credential.user!.uid;
-    
-    // For admins, the adminEmail is their own email. 
+
+    // For admins, the adminEmail is their own email.
     // For operators, it's the specific email provided during signup.
     final shopOwnerEmail = isAdmin ? email.trim() : (adminEmail?.trim() ?? '');
 
@@ -81,7 +81,8 @@ class AuthService {
       role: isAdmin ? 'admin' : 'operator',
       status: isAdmin ? 'approved' : 'pending',
       adminEmail: shopOwnerEmail,
-      canAddInventory: false, // Default to false, granted by admin during approval
+      canAddInventory:
+          false, // Default to false, granted by admin during approval
     );
     await _db.collection('users').doc(uid).set(userData.toMap());
     return userData;
@@ -101,10 +102,10 @@ class AuthService {
     final uid = credential.user!.uid;
 
     final doc = await _db.collection('users').doc(uid).get();
-    
+
     if (doc.exists) {
       final user = AppUser.fromMap(uid, doc.data()!);
-      
+
       // Strict Role Validation
       if (isAdmin && user.role != 'admin') {
         await _auth.signOut();
@@ -117,7 +118,8 @@ class AuthService {
         await _auth.signOut();
         throw FirebaseAuthException(
           code: 'invalid-credential',
-          message: 'This account is registered as an Admin. Please use Admin login.',
+          message:
+              'This account is registered as an Admin. Please use Admin login.',
         );
       }
 
@@ -140,7 +142,7 @@ class AuthService {
       role: isAdmin ? 'admin' : 'operator',
       status: isAdmin ? 'approved' : 'pending',
       adminEmail: shopOwnerEmail,
-      canAddInventory: isAdmin, 
+      canAddInventory: isAdmin,
     );
     await _db.collection('users').doc(uid).set(newUser.toMap());
     return newUser;
@@ -152,7 +154,10 @@ class AuthService {
   }
 
   /// Approve a pending operator.
-  static Future<void> approveUser(String uid, {bool canAddInventory = false}) async {
+  static Future<void> approveUser(
+    String uid, {
+    bool canAddInventory = false,
+  }) async {
     await _db.collection('users').doc(uid).update({
       'status': 'approved',
       'canAddInventory': canAddInventory,
@@ -171,9 +176,10 @@ class AuthService {
         .where('status', isEqualTo: 'pending')
         .where('adminEmail', isEqualTo: adminEmail)
         .snapshots()
-        .map((snap) => snap.docs
-            .map((d) => AppUser.fromMap(d.id, d.data()))
-            .toList());
+        .map(
+          (snap) =>
+              snap.docs.map((d) => AppUser.fromMap(d.id, d.data())).toList(),
+        );
   }
 
   /// Get all approved operators linked to a specific admin.
@@ -185,9 +191,10 @@ class AuthService {
         .where('adminEmail', isEqualTo: adminEmail)
         .where('isBlocked', isEqualTo: false) // Filter out blocked users
         .snapshots()
-        .map((snap) => snap.docs
-            .map((d) => AppUser.fromMap(d.id, d.data()))
-            .toList());
+        .map(
+          (snap) =>
+              snap.docs.map((d) => AppUser.fromMap(d.id, d.data())).toList(),
+        );
   }
 
   /// Block and remove an operator.
@@ -195,12 +202,17 @@ class AuthService {
     await _db.collection('users').doc(uid).update({
       'isBlocked': true,
       'status': 'removed', // Clear approved status
-      'deletionScheduledAt': Timestamp.fromDate(DateTime.now().add(const Duration(days: 3))),
+      'deletionScheduledAt': Timestamp.fromDate(
+        DateTime.now().add(const Duration(days: 3)),
+      ),
     });
   }
 
   /// Update an existing user's inventory clearance.
-  static Future<void> updateUserPermission(String uid, bool canAddInventory) async {
+  static Future<void> updateUserPermission(
+    String uid,
+    bool canAddInventory,
+  ) async {
     await _db.collection('users').doc(uid).update({
       'canAddInventory': canAddInventory,
     });
@@ -219,18 +231,56 @@ class AuthService {
     });
   }
 
-
   /// Push a new bill to Firestore for cloud sync.
-  static Future<void> saveBill(String adminEmail, BillingHistoryRecord bill, {required String docId}) async {
+  static Future<void> saveBill(
+    String adminEmail,
+    BillingHistoryRecord bill, {
+    required String docId,
+  }) async {
+    final reference = _db
+        .collection('shops')
+        .doc(adminEmail)
+        .collection('bills')
+        .doc(docId);
+    final existing = await reference.get();
+    final existingIsStored = existing.data()?['isStored'] == true;
+    final billToSave = existingIsStored && !bill.isStored
+        ? bill.copyWith(isStored: true)
+        : bill;
+    await reference.set(billToSave.toJson());
+  }
+
+  static Future<void> updateBillRetention(
+    String adminEmail,
+    BillingHistoryRecord bill, {
+    required bool isStored,
+  }) async {
+    final docId = bill.firestoreId;
+    if (docId == null || docId.isEmpty) {
+      throw StateError('Bill does not have a Firestore document ID');
+    }
+    final reference = _db
+        .collection('shops')
+        .doc(adminEmail)
+        .collection('bills')
+        .doc(docId);
+    await reference.set({'isStored': isStored}, SetOptions(merge: true));
+    final saved = await reference.get();
+    if (saved.data()?['isStored'] != isStored) {
+      throw StateError('Firebase did not persist the bill storage status');
+    }
+  }
+
+  static Future<void> deleteBill(String adminEmail, String firestoreId) async {
     await _db
         .collection('shops')
         .doc(adminEmail)
         .collection('bills')
-        .doc(docId)
-        .set(bill.toJson());
+        .doc(firestoreId)
+        .delete();
   }
 
-  /// Stream bills for the current shop. 
+  /// Stream bills for the current shop.
   /// Sorting and 3-day window filtering should be done in the UI/Provider.
   static Stream<List<BillingHistoryRecord>> billsStream(String adminEmail) {
     return _db
@@ -238,28 +288,42 @@ class AuthService {
         .doc(adminEmail)
         .collection('bills')
         .snapshots()
-        .map((snap) => snap.docs
-            .map((d) => BillingHistoryRecord.fromJson(d.data(), d.id))
-            .toList());
+        .map(
+          (snap) => snap.docs
+              .map(
+                (d) => BillingHistoryRecord.fromJson(
+                  d.data(),
+                  d.id,
+                ).copyWith(uploadedToCloud: true),
+              )
+              .toList(),
+        );
   }
 
   /// Delete bills older than a specified number of days from Firestore to save cloud cost
-  static Future<void> purgeOldCloudBills(String adminEmail, {int keepDays = 3}) async {
+  static Future<void> purgeOldCloudBills(
+    String adminEmail, {
+    int keepDays = 3,
+  }) async {
     try {
       final cutoff = DateTime.now().subtract(Duration(days: keepDays));
-      final cutoffKey = '${cutoff.year}-${cutoff.month.toString().padLeft(2, '0')}-${cutoff.day.toString().padLeft(2, '0')}';
-      
+      final cutoffKey =
+          '${cutoff.year}-${cutoff.month.toString().padLeft(2, '0')}-${cutoff.day.toString().padLeft(2, '0')}';
+
       final snapshot = await _db
           .collection('shops')
           .doc(adminEmail)
           .collection('bills')
           .where('date', isLessThan: cutoffKey)
           .get();
-          
+
       if (snapshot.docs.isNotEmpty) {
         final batch = _db.batch();
         for (var doc in snapshot.docs) {
-          batch.delete(doc.reference);
+          final data = doc.data();
+          if (data['isStored'] != true) {
+            batch.delete(doc.reference);
+          }
         }
         await batch.commit();
       }

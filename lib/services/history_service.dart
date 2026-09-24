@@ -1,3 +1,4 @@
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/billing_history.dart';
@@ -6,14 +7,33 @@ import 'auth_service.dart';
 
 class HistoryService {
   static const _historyKey = 'billing_history';
+  static const _pendingUploadKey = 'billing_pending_upload';
+  static const storedBillsKey = '__stored_bills__';
 
-  /// Save a bill to local history and purge old entries.
+  static Future<bool> _isConnected() async {
+    final connectivity = await Connectivity().checkConnectivity();
+    return connectivity != ConnectivityResult.none;
+  }
 
-  /// Save a bill to local history and purge old entries.
-  static Future<void> saveBill(Bill bill, {required String adminEmail, String? replaceBillId, String? replaceFirestoreId}) async {
+  static Future<void> saveBill(
+    Bill bill, {
+    required String adminEmail,
+    String? replaceBillId,
+    String? replaceFirestoreId,
+  }) async {
     final records = await _loadAndPurge();
-
+    final createdAtMs = DateTime.now().millisecondsSinceEpoch;
     final targetDate = replaceBillId != null ? bill.date : todayKey();
+    final existingRecord = replaceBillId == null
+        ? null
+        : records.cast<BillingHistoryRecord?>().firstWhere(
+            (record) => record?.billNumber == replaceBillId,
+            orElse: () => null,
+          );
+
+    final docId =
+        replaceFirestoreId ??
+        '${bill.billNumber}_${bill.operatorName.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '_')}_${createdAtMs}';
 
     final newRecord = BillingHistoryRecord(
       billNumber: bill.billNumber,
@@ -28,13 +48,15 @@ class HistoryService {
       apartmentName: bill.apartmentName,
       blockAndDoor: bill.blockAndDoor,
       itemsJson: bill.cartItems.map((i) => i.toJson()).toList(),
-      firestoreId: bill.firestoreId,
+      firestoreId: docId,
       originalOperator: bill.originalOperator ?? bill.operatorName,
-      isEdited: replaceBillId != null, // Mark as edited when overwriting an existing bill
+      isEdited: replaceBillId != null,
+      createdAtMs: createdAtMs,
+      uploadedToCloud: false,
+      isStored: existingRecord?.isStored ?? false,
     );
 
     if (replaceBillId != null) {
-      // Find and replace the existing record
       final index = records.indexWhere((r) => r.billNumber == replaceBillId);
       if (index >= 0) {
         records[index] = newRecord;
@@ -44,27 +66,18 @@ class HistoryService {
     } else {
       records.add(newRecord);
     }
-    
-    await _saveAll(records);
 
-    // Cloud Sync: Push to Firestore
+    await _saveAll(records);
+    await _savePendingUploadQueue();
+
     try {
-      final safeName = bill.operatorName.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '_');
-      
-      // If we have a specific firestoreId to replace, use it.
-      // Otherwise, generate a new one.
-      final uniqueDocId = replaceFirestoreId ?? 
-          '${bill.billNumber}_${safeName}_${DateTime.now().millisecondsSinceEpoch}';
-      
-      await AuthService.saveBill(adminEmail, newRecord, docId: uniqueDocId);
-      
+      await syncPendingBills(adminEmail);
       AuthService.purgeOldCloudBills(adminEmail, keepDays: 2);
     } catch (e) {
       debugPrint('Cloud sync error (will retry automatically): $e');
     }
   }
 
-  /// Save a calculator entry to history.
   static Future<void> saveCalculatorEntry({
     required String expression,
     required double total,
@@ -75,17 +88,21 @@ class HistoryService {
     String? replaceFirestoreId,
   }) async {
     final records = await _loadAndPurge();
-
-    // Format current time as HH:MM AM/PM
     final now = DateTime.now();
-    final hour = now.hour > 12 ? now.hour - 12 : (now.hour == 0 ? 12 : now.hour);
+    final hour = now.hour > 12
+        ? now.hour - 12
+        : (now.hour == 0 ? 12 : now.hour);
     final minute = now.minute.toString().padLeft(2, '0');
     final meridiem = now.hour >= 12 ? 'PM' : 'AM';
     final timeStr = '$hour:$minute $meridiem';
-    
-    final targetDate = replaceBillId != null ? todayKey() : todayKey();
+    final createdAtMs = now.millisecondsSinceEpoch;
+    final targetDate = todayKey();
 
-    String newBillNumber = replaceBillId ?? 'B-${await getDailyBillCount(operatorName)}';
+    String newBillNumber =
+        replaceBillId ?? 'B-${await getDailyBillCount(operatorName)}';
+    final docId =
+        replaceFirestoreId ??
+        '${newBillNumber}_${operatorName.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '_')}_${createdAtMs}';
 
     final newRecord = BillingHistoryRecord(
       billNumber: newBillNumber,
@@ -97,18 +114,22 @@ class HistoryService {
       grandTotal: total,
       cashAmount: 0,
       upiAmount: 0,
-      firestoreId: replaceFirestoreId,
+      firestoreId: docId,
       itemsJson: [
-        {'name': 'Expression', 'value': expression, 'price': total}
+        {'name': 'Expression', 'value': expression, 'price': total},
       ],
+      createdAtMs: createdAtMs,
+      uploadedToCloud: false,
     );
 
     if (replaceBillId != null) {
       final index = records.indexWhere((r) => r.billNumber == replaceBillId);
       if (index >= 0) {
-        // Keep original date when replacing
         final originalDate = records[index].date;
-        final updatedRecord = newRecord.copyWith(date: originalDate);
+        final updatedRecord = newRecord.copyWith(
+          date: originalDate,
+          firestoreId: docId,
+        );
         records[index] = updatedRecord;
       } else {
         records.add(newRecord);
@@ -117,19 +138,126 @@ class HistoryService {
       records.add(newRecord);
     }
     await _saveAll(records);
+    await _savePendingUploadQueue();
 
-    // Cloud Sync
     try {
-      final safeName = operatorName.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '_');
-      final uniqueDocId = replaceFirestoreId ?? '${newRecord.billNumber}_${safeName}_${DateTime.now().millisecondsSinceEpoch}';
-      
-      await AuthService.saveBill(adminEmail, newRecord, docId: uniqueDocId);
-      
-      // Auto-purge old cloud bills
+      await syncPendingBills(adminEmail);
       AuthService.purgeOldCloudBills(adminEmail, keepDays: 2);
     } catch (e) {
       debugPrint('Cloud sync error for calculator entry: $e');
     }
+  }
+
+  static Future<List<BillingHistoryRecord>> getPendingUploadRecords() async {
+    final records = await _loadAndPurge();
+    final pending = records.where((r) => !r.uploadedToCloud).toList()
+      ..sort((a, b) => a.createdAtMs.compareTo(b.createdAtMs));
+    return pending;
+  }
+
+  static Future<int> getPendingUploadCount() async {
+    return (await getPendingUploadRecords()).length;
+  }
+
+  static Future<void> syncPendingBills(String adminEmail) async {
+    if (adminEmail.trim().isEmpty || adminEmail == 'local-only') return;
+    if (!await _isConnected()) return;
+
+    final records = await _loadAndPurge();
+    final pending = records
+        .where(
+          (r) =>
+              !(r.uploadedToCloud ||
+                  (r.firestoreId != null &&
+                      r.firestoreId!.isNotEmpty &&
+                      r.firestoreId!.startsWith('uploaded_'))),
+        )
+        .toList();
+
+    if (pending.isEmpty) return;
+
+    pending.sort((a, b) => a.createdAtMs.compareTo(b.createdAtMs));
+
+    for (final record in pending) {
+      final docId = (record.firestoreId ?? '').trim().isNotEmpty
+          ? record.firestoreId!
+          : '${record.billNumber}_${record.operatorName.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '_')}_${record.createdAtMs}';
+
+      try {
+        await AuthService.saveBill(
+          adminEmail,
+          record.copyWith(firestoreId: docId),
+          docId: docId,
+        );
+        final index = records.indexWhere(
+          (r) =>
+              r.createdAtMs == record.createdAtMs &&
+              r.billNumber == record.billNumber &&
+              r.time == record.time,
+        );
+        if (index >= 0) {
+          records[index] = records[index].copyWith(
+            firestoreId: docId,
+            uploadedToCloud: true,
+          );
+        }
+      } catch (e) {
+        debugPrint('Upload failed for queued bill ${record.billNumber}: $e');
+        break;
+      }
+    }
+
+    await _saveAll(records);
+    await _savePendingUploadQueue();
+  }
+
+  static Future<void> markLocalBillStored(
+    BillingHistoryRecord bill,
+    bool isStored,
+  ) async {
+    final records = await _loadAndPurge();
+    final index = records.indexWhere(
+      (record) =>
+          record.billNumber == bill.billNumber &&
+          record.createdAtMs == bill.createdAtMs,
+    );
+    if (index < 0) return;
+    records[index] = records[index].copyWith(isStored: isStored);
+    await _saveAll(records);
+    await _savePendingUploadQueue();
+  }
+
+  static Future<void> deleteLocalBill(BillingHistoryRecord bill) async {
+    final records = await _loadAndPurge();
+    records.removeWhere(
+      (record) =>
+          record.billNumber == bill.billNumber &&
+          record.createdAtMs == bill.createdAtMs,
+    );
+    await _saveAll(records);
+    await _savePendingUploadQueue();
+  }
+
+  static Future<void> _savePendingUploadQueue() async {
+    final prefs = await SharedPreferences.getInstance();
+    final records = await _loadAndPurge();
+    final queue = records
+        .where((r) => !r.uploadedToCloud)
+        .map(
+          (r) => {
+            'billNumber': r.billNumber,
+            'createdAtMs': r.createdAtMs,
+            'firestoreId': r.firestoreId ?? '',
+          },
+        )
+        .toList();
+    await prefs.setString(
+      _pendingUploadKey,
+      BillingHistoryRecord.encodeList(
+        records.where((r) => !r.uploadedToCloud).toList(),
+      ),
+    );
+    debugPrint('Queued bills pending upload: ${queue.length}');
   }
 
   /// Get all records (today + yesterday + day before yesterday), grouped by date string.
@@ -180,7 +308,7 @@ class HistoryService {
   static Future<int> getDailyBillCount(String currentOperator) async {
     final records = await _loadAndPurge();
     final today = todayKey();
-    
+
     int maxNumber = 0;
     for (final r in records) {
       if (r.date == today && r.billNumber.startsWith('B-')) {
@@ -194,7 +322,7 @@ class HistoryService {
         }
       }
     }
-    
+
     return maxNumber + 1;
   }
 
@@ -214,11 +342,7 @@ class HistoryService {
 
   /// Returns the three stored date keys: [today, yesterday, dayBeforeYesterday].
   static List<String> rollingWindowKeys() {
-    return [
-      dateKeyDaysAgo(0),
-      dateKeyDaysAgo(1),
-      dateKeyDaysAgo(2),
-    ];
+    return [dateKeyDaysAgo(0), dateKeyDaysAgo(1), dateKeyDaysAgo(2)];
   }
 
   // ===== Private helpers =====
@@ -237,7 +361,7 @@ class HistoryService {
           '${cutoff.year}-${cutoff.month.toString().padLeft(2, '0')}-${cutoff.day.toString().padLeft(2, '0')}';
 
       final filtered = all
-          .where((r) => r.date.compareTo(cutoffKey) > 0)
+          .where((r) => r.isStored || r.date.compareTo(cutoffKey) > 0)
           .toList();
 
       // Save back only if we purged anything

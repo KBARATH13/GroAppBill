@@ -61,21 +61,90 @@ class _CartScreenState extends ConsumerState<CartScreen> {
       final qtyStr = result['quantity'];
       final priceStr = result['price'];
       final qty = double.tryParse(qtyStr ?? '');
-      
+
       if (qty != null && qty > 0) {
         final newPrice = double.tryParse(priceStr ?? '');
         Product? newProduct;
-        
+
         if (newPrice != null && newPrice != item.product.price) {
           newProduct = item.product.copyWith(price: newPrice);
         }
-        
+
         cartNotifier.updateItemQuantity(index, qty, newProduct: newProduct);
       }
     }
   }
 
-  Future<int?> _showMergeTargetDialog(List<int> sourceCartIndices, List<List<CartItem>> carts) async {
+  Future<void> _showEditPriceDialog(
+    CartItem item,
+    int index,
+    CartNotifier cartNotifier,
+    bool isAdmin,
+  ) async {
+    final controller = TextEditingController(
+      text: item.product.price.toStringAsFixed(2),
+    );
+
+    final result = await showDialog<double>(
+      context: context,
+      builder: (ctx) {
+        return AlertDialog(
+          title: const Text('Edit Unit Price'),
+          content: TextField(
+            controller: controller,
+            autofocus: true,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            decoration: InputDecoration(
+              labelText: 'Price per ${item.product.unit}',
+              prefixText: '₹ ',
+              border: const OutlineInputBorder(),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () {
+                final price = double.tryParse(controller.text);
+                if (price != null && price > 0) {
+                  Navigator.pop(ctx, price);
+                } else {
+                  ScaffoldMessenger.of(ctx).showSnackBar(
+                    const SnackBar(
+                      content: Text('Please enter a valid price'),
+                      backgroundColor: Color(0xFFFF6B6B),
+                    ),
+                  );
+                }
+              },
+              child: const Text('Update'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (result != null) {
+      cartNotifier.updateItemPrice(index, result);
+      if (mounted) {
+        final scheme = Theme.of(context).colorScheme;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Price updated for ${item.product.name}'),
+            backgroundColor: scheme.primary,
+            duration: const Duration(seconds: 1),
+          ),
+        );
+      }
+    }
+  }
+
+  Future<int?> _showMergeTargetDialog(
+    List<int> sourceCartIndices,
+    List<List<CartItem>> carts,
+  ) async {
     return showDialog<int>(
       context: context,
       builder: (ctx) {
@@ -88,7 +157,9 @@ class _CartScreenState extends ConsumerState<CartScreen> {
                 final cartItems = carts[index];
                 return ListTile(
                   title: Text('Cart ${index + 1}'),
-                  subtitle: Text('${cartItems.length} item${cartItems.length == 1 ? '' : 's'}'),
+                  subtitle: Text(
+                    '${cartItems.length} item${cartItems.length == 1 ? '' : 's'}',
+                  ),
                   onTap: () => Navigator.pop(ctx, index),
                 );
               }).toList(),
@@ -111,7 +182,12 @@ class _CartScreenState extends ConsumerState<CartScreen> {
     List<CartItem> activeCart,
     List<CartItem> sourceCart,
   ) async {
-    final duplicateItems = activeCart.where((item) => sourceCart.any((other) => other.product.id == item.product.id)).toList();
+    final duplicateItems = activeCart
+        .where(
+          (item) =>
+              sourceCart.any((other) => other.product.id == item.product.id),
+        )
+        .toList();
 
     return showDialog<DuplicateMergeStrategy>(
       context: context,
@@ -128,7 +204,9 @@ class _CartScreenState extends ConsumerState<CartScreen> {
                 ),
                 const SizedBox(height: 16),
                 ...duplicateItems.map((item) {
-                  final otherItem = sourceCart.firstWhere((other) => other.product.id == item.product.id);
+                  final otherItem = sourceCart.firstWhere(
+                    (other) => other.product.id == item.product.id,
+                  );
                   return Padding(
                     padding: const EdgeInsets.only(bottom: 8.0),
                     child: Text(
@@ -142,15 +220,18 @@ class _CartScreenState extends ConsumerState<CartScreen> {
           ),
           actions: [
             TextButton(
-              onPressed: () => Navigator.pop(ctx, DuplicateMergeStrategy.keepCurrent),
+              onPressed: () =>
+                  Navigator.pop(ctx, DuplicateMergeStrategy.keepCurrent),
               child: const Text('Keep Current Cart'),
             ),
             TextButton(
-              onPressed: () => Navigator.pop(ctx, DuplicateMergeStrategy.keepSource),
+              onPressed: () =>
+                  Navigator.pop(ctx, DuplicateMergeStrategy.keepSource),
               child: const Text('Keep Selected Cart'),
             ),
             TextButton(
-              onPressed: () => Navigator.pop(ctx, DuplicateMergeStrategy.addQuantities),
+              onPressed: () =>
+                  Navigator.pop(ctx, DuplicateMergeStrategy.addQuantities),
               child: const Text('Add Together'),
             ),
           ],
@@ -188,11 +269,16 @@ class _CartScreenState extends ConsumerState<CartScreen> {
                   // Grand Total display
                   Container(
                     width: double.infinity,
-                    padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+                    padding: const EdgeInsets.symmetric(
+                      vertical: 10,
+                      horizontal: 12,
+                    ),
                     decoration: BoxDecoration(
                       color: scheme.secondary.withOpacity(0.1),
                       borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: scheme.secondary.withOpacity(0.3)),
+                      border: Border.all(
+                        color: scheme.secondary.withOpacity(0.3),
+                      ),
                     ),
                     child: Column(
                       children: [
@@ -263,15 +349,21 @@ class _CartScreenState extends ConsumerState<CartScreen> {
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
                             Text(
-                              change >= 0 ? 'Change to Return:' : 'Amount Short:',
-                              style: const TextStyle(fontWeight: FontWeight.w600),
+                              change >= 0
+                                  ? 'Change to Return:'
+                                  : 'Amount Short:',
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w600,
+                              ),
                             ),
                             Text(
                               'Rs.${change.abs().toStringAsFixed(2)}',
                               style: TextStyle(
                                 fontSize: 18,
                                 fontWeight: FontWeight.bold,
-                                color: change >= 0 ? Colors.blue[700] : Colors.red,
+                                color: change >= 0
+                                    ? Colors.blue[700]
+                                    : Colors.red,
                               ),
                             ),
                           ],
@@ -316,7 +408,9 @@ class _CartScreenState extends ConsumerState<CartScreen> {
                       backgroundColor: Colors.black,
                       foregroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 24, vertical: 12),
+                        horizontal: 24,
+                        vertical: 12,
+                      ),
                     ),
                     onPressed: () {
                       double cash = 0;
@@ -369,9 +463,9 @@ class _CartScreenState extends ConsumerState<CartScreen> {
       if (mounted) {
         setState(() => _printerMessage = '✓ Bill saved!');
         if (Navigator.canPop(context)) Navigator.pop(context);
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Bill saved to history')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Bill saved to history')));
       }
       await Future.delayed(const Duration(seconds: 1));
       if (mounted) setState(() => _printerMessage = '');
@@ -408,7 +502,7 @@ class _CartScreenState extends ConsumerState<CartScreen> {
       if (mounted) {
         setState(() => _printerMessage = '✓ Bill printed!');
         if (Navigator.canPop(context)) Navigator.pop(context);
-        
+
         await Future.delayed(const Duration(seconds: 1));
         if (mounted) {
           setState(() {
@@ -433,7 +527,7 @@ class _CartScreenState extends ConsumerState<CartScreen> {
   void _offerShareReceipt(Bill bill) {
     final shop = ref.read(shopInfoProvider);
     final buffer = StringBuffer();
-    
+
     buffer.writeln('━━━━━━━━━━━━━━━━━━━━━━━━');
     buffer.writeln('  *${shop.shopName.toUpperCase()}*');
     if (shop.address.isNotEmpty) buffer.writeln(shop.address);
@@ -444,17 +538,17 @@ class _CartScreenState extends ConsumerState<CartScreen> {
     buffer.writeln('Operator: ${bill.operatorName}');
     buffer.writeln('--------------------------------');
     buffer.writeln('*ITEMS*          *QTY*     *TOTAL*');
-    
+
     for (final item in bill.cartItems) {
       final nameStr = item.product.name;
-      final name = nameStr.length > 14 
-          ? nameStr.substring(0, 14) 
+      final name = nameStr.length > 14
+          ? nameStr.substring(0, 14)
           : nameStr.padRight(14);
       final qty = '${item.quantity}${item.product.unit}'.padRight(8);
       final total = '₹${item.total.toStringAsFixed(2)}';
       buffer.writeln('$name $qty $total');
     }
-    
+
     buffer.writeln('--------------------------------');
     buffer.writeln('Total Items: ${bill.cartItems.length}');
     buffer.writeln('*Grand Total: ₹${bill.grandTotal.toStringAsFixed(2)}*');
@@ -491,8 +585,9 @@ class _CartScreenState extends ConsumerState<CartScreen> {
   Widget build(BuildContext context) {
     final cartState = ref.watch(cartProvider);
     final products = ref.watch(productsProvider);
-    final showMergeButton = cartState.hasMultipleNonEmptyCarts && cartState.activeCart.isNotEmpty;
-    
+    final showMergeButton =
+        cartState.hasMultipleNonEmptyCarts && cartState.activeCart.isNotEmpty;
+
     // Sync prices in real-time for display
     final cart = cartState.activeCart.map((item) {
       if (item.isPriceOverridden) return item;
@@ -546,12 +641,15 @@ class _CartScreenState extends ConsumerState<CartScreen> {
                       if (cart.isNotEmpty)
                         Container(
                           padding: const EdgeInsets.symmetric(
-                              horizontal: 10, vertical: 4),
+                            horizontal: 10,
+                            vertical: 4,
+                          ),
                           decoration: BoxDecoration(
                             color: Colors.blue.withOpacity(0.2),
                             borderRadius: BorderRadius.circular(20),
                             border: Border.all(
-                                color: Colors.blue.withOpacity(0.3)),
+                              color: Colors.blue.withOpacity(0.3),
+                            ),
                           ),
                           child: Text(
                             '${cart.length} items',
@@ -574,22 +672,34 @@ class _CartScreenState extends ConsumerState<CartScreen> {
                               final sourceCartIndices = cartState.carts
                                   .asMap()
                                   .entries
-                                  .where((entry) => entry.key != cartState.activeIndex && entry.value.isNotEmpty)
+                                  .where(
+                                    (entry) =>
+                                        entry.key != cartState.activeIndex &&
+                                        entry.value.isNotEmpty,
+                                  )
                                   .map((entry) => entry.key)
                                   .toList();
 
-                              final sourceCartIndex = await _showMergeTargetDialog(
-                                sourceCartIndices,
-                                cartState.carts,
-                              );
+                              final sourceCartIndex =
+                                  await _showMergeTargetDialog(
+                                    sourceCartIndices,
+                                    cartState.carts,
+                                  );
                               if (sourceCartIndex == null) return;
 
                               final existingDuplicates = cartState.activeCart
-                                  .where((item) => cartState.carts[sourceCartIndex]
-                                      .any((other) => other.product.id == item.product.id))
+                                  .where(
+                                    (item) =>
+                                        cartState.carts[sourceCartIndex].any(
+                                          (other) =>
+                                              other.product.id ==
+                                              item.product.id,
+                                        ),
+                                  )
                                   .toList();
 
-                              final duplicateStrategy = existingDuplicates.isEmpty
+                              final duplicateStrategy =
+                                  existingDuplicates.isEmpty
                                   ? DuplicateMergeStrategy.keepCurrent
                                   : await _showDuplicateResolveDialog(
                                       cartState.activeIndex,
@@ -599,7 +709,10 @@ class _CartScreenState extends ConsumerState<CartScreen> {
                                     );
                               if (duplicateStrategy == null) return;
 
-                              cartNotifier.mergeCartIntoActive(sourceCartIndex, duplicateStrategy);
+                              cartNotifier.mergeCartIntoActive(
+                                sourceCartIndex,
+                                duplicateStrategy,
+                              );
                               if (mounted) {
                                 ScaffoldMessenger.of(context).showSnackBar(
                                   SnackBar(
@@ -612,19 +725,28 @@ class _CartScreenState extends ConsumerState<CartScreen> {
                             },
                             child: GlassContainer(
                               color: Colors.green,
-                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 12,
+                              ),
                               borderRadius: 16,
                               child: const Row(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
-                                  Icon(Icons.merge_type, color: Colors.white, size: 18),
+                                  Icon(
+                                    Icons.merge_type,
+                                    color: Colors.white,
+                                    size: 18,
+                                  ),
                                   SizedBox(width: 6),
-                                  Text('MERGE',
-                                      style: TextStyle(
-                                        color: Colors.white,
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 13,
-                                      )),
+                                  Text(
+                                    'MERGE',
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 13,
+                                    ),
+                                  ),
                                 ],
                               ),
                             ),
@@ -632,16 +754,20 @@ class _CartScreenState extends ConsumerState<CartScreen> {
                         ),
                       if (cart.isNotEmpty)
                         IconButton(
-                          icon: const Icon(Icons.delete_sweep_outlined,
-                              color: Colors.white70),
+                          icon: const Icon(
+                            Icons.delete_sweep_outlined,
+                            color: Colors.white70,
+                          ),
                           tooltip: 'Clear Cart',
                           onPressed: () {
                             showDialog(
                               context: context,
                               builder: (_) => AlertDialog(
                                 backgroundColor: Colors.blueGrey[900],
-                                title: const Text('Clear Cart?',
-                                    style: TextStyle(color: Colors.white)),
+                                title: const Text(
+                                  'Clear Cart?',
+                                  style: TextStyle(color: Colors.white),
+                                ),
                                 content: const Text(
                                   'Do you want to remove all items?',
                                   style: TextStyle(color: Colors.white70),
@@ -656,9 +782,10 @@ class _CartScreenState extends ConsumerState<CartScreen> {
                                       cartNotifier.clearCart();
                                       Navigator.pop(context);
                                     },
-                                    child: const Text('Clear',
-                                        style:
-                                            TextStyle(color: Colors.redAccent)),
+                                    child: const Text(
+                                      'Clear',
+                                      style: TextStyle(color: Colors.redAccent),
+                                    ),
                                   ),
                                 ],
                               ),
@@ -670,26 +797,33 @@ class _CartScreenState extends ConsumerState<CartScreen> {
                         onTap: cart.isEmpty
                             ? null
                             : () => _showViewBillDialog(
-                                  cart,
-                                  cartNotifier.grandTotal,
-                                  operatorName,
-                                  ref.read(shopInfoProvider),
-                                ),
+                                cart,
+                                cartNotifier.grandTotal,
+                                operatorName,
+                                ref.read(shopInfoProvider),
+                              ),
                         child: GlassContainer(
                           color: Colors.blue,
                           padding: const EdgeInsets.symmetric(
-                              horizontal: 16, vertical: 10),
+                            horizontal: 16,
+                            vertical: 10,
+                          ),
                           borderRadius: 12,
                           child: const Row(
                             children: [
-                              Icon(Icons.receipt_long,
-                                  color: Colors.white, size: 20),
+                              Icon(
+                                Icons.receipt_long,
+                                color: Colors.white,
+                                size: 20,
+                              ),
                               SizedBox(width: 8),
-                              Text('Receipt',
-                                  style: TextStyle(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.bold,
-                                  )),
+                              Text(
+                                'Receipt',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
                             ],
                           ),
                         ),
@@ -707,12 +841,19 @@ class _CartScreenState extends ConsumerState<CartScreen> {
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          Icon(Icons.shopping_cart_outlined,
-                              size: 64, color: Colors.white24),
+                          Icon(
+                            Icons.shopping_cart_outlined,
+                            size: 64,
+                            color: Colors.white24,
+                          ),
                           SizedBox(height: 16),
-                          Text('Your cart is empty',
-                              style: TextStyle(
-                                  color: Colors.white38, fontSize: 16)),
+                          Text(
+                            'Your cart is empty',
+                            style: TextStyle(
+                              color: Colors.white38,
+                              fontSize: 16,
+                            ),
+                          ),
                         ],
                       ),
                     )
@@ -736,8 +877,9 @@ class _CartScreenState extends ConsumerState<CartScreen> {
                                     borderRadius: BorderRadius.circular(12),
                                   ),
                                   child: const Icon(
-                                      Icons.shopping_bag_outlined,
-                                      color: Colors.white70),
+                                    Icons.shopping_bag_outlined,
+                                    color: Colors.white70,
+                                  ),
                                 ),
                                 const SizedBox(width: 16),
                                 Expanded(
@@ -757,8 +899,9 @@ class _CartScreenState extends ConsumerState<CartScreen> {
                                       Text(
                                         '₹${item.product.price.toStringAsFixed(2)} per ${item.product.unit}',
                                         style: const TextStyle(
-                                            color: Colors.white54,
-                                            fontSize: 12),
+                                          color: Colors.white54,
+                                          fontSize: 12,
+                                        ),
                                       ),
                                     ],
                                   ),
@@ -775,10 +918,29 @@ class _CartScreenState extends ConsumerState<CartScreen> {
                                       ),
                                     ),
                                     const SizedBox(height: 8),
-                                    Row(
+                                    Wrap(
+                                      alignment: WrapAlignment.end,
+                                      crossAxisAlignment:
+                                          WrapCrossAlignment.center,
+                                      spacing: 8,
+                                      runSpacing: 8,
                                       children: [
+                                        _IconButton(
+                                          icon: Icons.currency_rupee,
+                                          color: Colors.green.withOpacity(0.15),
+                                          iconColor: Colors.greenAccent,
+                                          onTap: () => _showEditPriceDialog(
+                                            item,
+                                            index,
+                                            cartNotifier,
+                                            isAdmin,
+                                          ),
+                                        ),
                                         if (item.product.unit == 'pc')
-                                          Row(
+                                          Wrap(
+                                            spacing: 12,
+                                            crossAxisAlignment:
+                                                WrapCrossAlignment.center,
                                             children: [
                                               _IconButton(
                                                 icon: Icons.remove,
@@ -786,34 +948,34 @@ class _CartScreenState extends ConsumerState<CartScreen> {
                                                 onTap: item.quantity <= 1
                                                     ? () {}
                                                     : () => cartNotifier
-                                                        .updateItemQuantity(
+                                                          .updateItemQuantity(
                                                             index,
-                                                            item.quantity - 1),
+                                                            item.quantity - 1,
+                                                          ),
                                               ),
-                                              const SizedBox(width: 12),
                                               Text(
-                                                item.quantity
-                                                    .toStringAsFixed(0),
+                                                item.quantity.toStringAsFixed(
+                                                  0,
+                                                ),
                                                 style: const TextStyle(
                                                   color: Colors.orangeAccent,
                                                   fontWeight: FontWeight.bold,
                                                   fontSize: 16,
                                                 ),
                                               ),
-                                              const SizedBox(width: 12),
                                               _IconButton(
                                                 icon: Icons.add,
                                                 onTap: () => cartNotifier
                                                     .updateItemQuantity(
-                                                        index,
-                                                        item.quantity + 1),
+                                                      index,
+                                                      item.quantity + 1,
+                                                    ),
                                               ),
                                             ],
                                           )
                                         else
                                           GestureDetector(
-                                            onTap: () =>
-                                                _showEditWeightDialog(
+                                            onTap: () => _showEditWeightDialog(
                                               item,
                                               index,
                                               cartNotifier,
@@ -822,16 +984,19 @@ class _CartScreenState extends ConsumerState<CartScreen> {
                                             child: Container(
                                               padding:
                                                   const EdgeInsets.symmetric(
-                                                      horizontal: 10,
-                                                      vertical: 4),
+                                                    horizontal: 10,
+                                                    vertical: 4,
+                                                  ),
                                               decoration: BoxDecoration(
-                                                color: Colors.blue
-                                                    .withOpacity(0.1),
+                                                color: Colors.blue.withOpacity(
+                                                  0.1,
+                                                ),
                                                 borderRadius:
                                                     BorderRadius.circular(8),
                                                 border: Border.all(
-                                                    color: Colors.blue
-                                                        .withOpacity(0.3)),
+                                                  color: Colors.blue
+                                                      .withOpacity(0.3),
+                                                ),
                                               ),
                                               child: Text(
                                                 '${item.quantity.toStringAsFixed(3)} ${item.product.unit}',
@@ -843,19 +1008,20 @@ class _CartScreenState extends ConsumerState<CartScreen> {
                                               ),
                                             ),
                                           ),
-                                        const SizedBox(width: 8),
                                         _IconButton(
                                           icon: Icons.delete_outline,
-                                          color:
-                                              Colors.redAccent.withOpacity(0.2),
+                                          color: Colors.redAccent.withOpacity(
+                                            0.2,
+                                          ),
                                           iconColor: Colors.redAccent,
                                           onTap: () {
                                             cartNotifier.removeItem(index);
-                                            ScaffoldMessenger.of(context)
-                                                .showSnackBar(
+                                            ScaffoldMessenger.of(
+                                              context,
+                                            ).showSnackBar(
                                               const SnackBar(
-                                                  content:
-                                                      Text('Item removed')),
+                                                content: Text('Item removed'),
+                                              ),
                                             );
                                           },
                                         ),
@@ -884,8 +1050,13 @@ class _CartScreenState extends ConsumerState<CartScreen> {
                       Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text('Total Items',
-                              style: TextStyle(color: Colors.white54, fontSize: 13)),
+                          const Text(
+                            'Total Items',
+                            style: TextStyle(
+                              color: Colors.white54,
+                              fontSize: 13,
+                            ),
+                          ),
                           Text(
                             '${cart.length} Products',
                             style: const TextStyle(
@@ -899,8 +1070,13 @@ class _CartScreenState extends ConsumerState<CartScreen> {
                       Column(
                         crossAxisAlignment: CrossAxisAlignment.end,
                         children: [
-                          const Text('Total Amount',
-                              style: TextStyle(color: Colors.white54, fontSize: 13)),
+                          const Text(
+                            'Total Amount',
+                            style: TextStyle(
+                              color: Colors.white54,
+                              fontSize: 13,
+                            ),
+                          ),
                           Text(
                             '₹${cartNotifier.grandTotal.toStringAsFixed(2)}',
                             style: const TextStyle(
@@ -930,8 +1106,11 @@ class _CartScreenState extends ConsumerState<CartScreen> {
                             child: const Row(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
-                                Icon(Icons.save_outlined,
-                                    color: Colors.white, size: 18),
+                                Icon(
+                                  Icons.save_outlined,
+                                  color: Colors.white,
+                                  size: 18,
+                                ),
                                 SizedBox(width: 4),
                                 Text(
                                   'SAVE BILL',
@@ -957,8 +1136,9 @@ class _CartScreenState extends ConsumerState<CartScreen> {
                                   : _handlePrint,
                               child: GlassContainer(
                                 color: scheme.secondary,
-                                padding:
-                                    const EdgeInsets.symmetric(vertical: 16),
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 16,
+                                ),
                                 borderRadius: 16,
                                 child: Center(
                                   child: _isPrinting
@@ -974,8 +1154,11 @@ class _CartScreenState extends ConsumerState<CartScreen> {
                                           mainAxisAlignment:
                                               MainAxisAlignment.center,
                                           children: [
-                                            Icon(Icons.print_outlined,
-                                                color: Colors.white, size: 18),
+                                            Icon(
+                                              Icons.print_outlined,
+                                              color: Colors.white,
+                                              size: 18,
+                                            ),
                                             SizedBox(width: 4),
                                             Text(
                                               'PRINT BILL',
@@ -1005,10 +1188,13 @@ class _CartScreenState extends ConsumerState<CartScreen> {
                       padding: const EdgeInsets.symmetric(vertical: 16),
                       borderRadius: 16,
                       child: const Center(
-                        child: Text('Close',
-                            style: TextStyle(
-                                color: Colors.white70,
-                                fontWeight: FontWeight.bold)),
+                        child: Text(
+                          'Close',
+                          style: TextStyle(
+                            color: Colors.white70,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
                       ),
                     ),
                   ),
@@ -1023,7 +1209,9 @@ class _CartScreenState extends ConsumerState<CartScreen> {
                           final isSuccess = _printerMessage.contains('✓');
                           return Container(
                             padding: const EdgeInsets.symmetric(
-                                horizontal: 16, vertical: 12),
+                              horizontal: 16,
+                              vertical: 12,
+                            ),
                             width: double.infinity,
                             decoration: BoxDecoration(
                               color: isSuccess
@@ -1107,9 +1295,7 @@ class _IconButton extends StatelessWidget {
         ),
         child: Icon(
           icon,
-          color: isDisabled
-              ? Colors.white24
-              : (iconColor ?? Colors.white70),
+          color: isDisabled ? Colors.white24 : (iconColor ?? Colors.white70),
           size: 22,
         ),
       ),

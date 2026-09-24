@@ -32,6 +32,11 @@ set(CMAKE_CXX_FLAGS_PROFILE "${CMAKE_CXX_FLAGS_RELEASE}")
 # Use Unicode for all projects.
 add_definitions(-DUNICODE -D_UNICODE)
 
+# Firebase's Windows SDK uses CRT functions such as strncpy. MSVC reports
+# those calls as C4996, and the standard plugin settings promote warnings to
+# errors, so suppress this compatibility warning for the native build.
+add_compile_definitions(_CRT_SECURE_NO_WARNINGS)
+
 # Compilation settings that should be applied to most targets.
 #
 # Be cautious about adding new options here, as plugins use this function by

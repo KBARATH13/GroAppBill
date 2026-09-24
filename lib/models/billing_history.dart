@@ -17,6 +17,9 @@ class BillingHistoryRecord {
   final String? firestoreId;
   final String? originalOperator;
   final bool isEdited;
+  final int createdAtMs;
+  final bool uploadedToCloud;
+  final bool isStored;
 
   BillingHistoryRecord({
     required this.billNumber,
@@ -34,6 +37,9 @@ class BillingHistoryRecord {
     this.firestoreId,
     this.originalOperator,
     this.isEdited = false,
+    this.createdAtMs = 0,
+    this.uploadedToCloud = false,
+    this.isStored = false,
   });
 
   Map<String, dynamic> toJson() => {
@@ -48,6 +54,11 @@ class BillingHistoryRecord {
     'upiAmount': upiAmount,
     'items': itemsJson,
     'isEdited': isEdited,
+    'createdAtMs': createdAtMs == 0
+        ? DateTime.now().millisecondsSinceEpoch
+        : createdAtMs,
+    'uploadedToCloud': uploadedToCloud,
+    'isStored': isStored,
     if (originalOperator != null) 'originalOperator': originalOperator,
     if (apartmentName != null) 'apartmentName': apartmentName,
     if (blockAndDoor != null) 'blockAndDoor': blockAndDoor,
@@ -70,6 +81,9 @@ class BillingHistoryRecord {
     String? firestoreId,
     String? originalOperator,
     bool? isEdited,
+    int? createdAtMs,
+    bool? uploadedToCloud,
+    bool? isStored,
   }) {
     return BillingHistoryRecord(
       billNumber: billNumber ?? this.billNumber,
@@ -87,10 +101,16 @@ class BillingHistoryRecord {
       firestoreId: firestoreId ?? this.firestoreId,
       originalOperator: originalOperator ?? this.originalOperator,
       isEdited: isEdited ?? this.isEdited,
+      createdAtMs: createdAtMs ?? this.createdAtMs,
+      uploadedToCloud: uploadedToCloud ?? this.uploadedToCloud,
+      isStored: isStored ?? this.isStored,
     );
   }
 
-  factory BillingHistoryRecord.fromJson(Map<String, dynamic> json, [String? docId]) {
+  factory BillingHistoryRecord.fromJson(
+    Map<String, dynamic> json, [
+    String? docId,
+  ]) {
     return BillingHistoryRecord(
       billNumber: json['billNumber'] as String,
       date: json['date'] as String,
@@ -107,6 +127,10 @@ class BillingHistoryRecord {
       firestoreId: docId ?? json['firestoreId'] as String?,
       originalOperator: json['originalOperator'] as String?,
       isEdited: json['isEdited'] as bool? ?? false,
+      createdAtMs:
+          json['createdAtMs'] as int? ?? DateTime.now().millisecondsSinceEpoch,
+      uploadedToCloud: json['uploadedToCloud'] as bool? ?? false,
+      isStored: json['isStored'] as bool? ?? false,
     );
   }
 

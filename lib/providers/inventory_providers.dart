@@ -198,6 +198,23 @@ class ProductsNotifier extends StateNotifier<List<Product>> {
   }
 }
 
+List<String> sortCategoriesForDisplay(List<String> categories, List<Product> products) {
+  final baseCategories = categories.toSet().toList();
+  if (baseCategories.isEmpty) return const ['All'];
+
+  final sorted = [...baseCategories]
+    ..sort((a, b) {
+      final countA = products.where((product) => product.category == a).length;
+      final countB = products.where((product) => product.category == b).length;
+      if (countB != countA) {
+        return countB.compareTo(countA);
+      }
+      return a.toLowerCase().compareTo(b.toLowerCase());
+    });
+
+  return sorted;
+}
+
 // --- Providers ---
 
 // Inventory provider - streams all products for the current shop

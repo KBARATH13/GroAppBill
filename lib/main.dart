@@ -1,22 +1,44 @@
+import 'dart:async';
+
+import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'screens/index.dart';
 import 'services/auth_service.dart';
+import 'services/history_service.dart';
 import 'widgets/glass_container.dart';
 import 'widgets/vibrant_background.dart';
 import 'providers/app_providers.dart';
+
+Future<void> _syncPendingBillsForCurrentUser() async {
+  final user = FirebaseAuth.instance.currentUser;
+  if (user == null) return;
+
+  final appUser = await AuthService.fetchAppUser(user.uid);
+  if (appUser == null || appUser.adminEmail.trim().isEmpty) return;
+
+  await HistoryService.syncPendingBills(appUser.adminEmail);
+}
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp();
 
-  // Enable Firestore offline persistence
   FirebaseFirestore.instance.settings = const Settings(
     persistenceEnabled: true,
     cacheSizeBytes: Settings.CACHE_SIZE_UNLIMITED,
   );
+
+  await _syncPendingBillsForCurrentUser();
+
+  final connectivity = Connectivity();
+  connectivity.onConnectivityChanged.listen((result) async {
+    if (result == ConnectivityResult.none) return;
+    await _syncPendingBillsForCurrentUser();
+  });
 
   runApp(const ProviderScope(child: MyApp()));
 }
@@ -142,17 +164,18 @@ class _PendingApprovalScreen extends ConsumerWidget {
                     textAlign: TextAlign.center,
                   ),
                   const SizedBox(height: 40),
-                  GestureDetector(
-                    onTap: () {
-                      AuthService.signOut();
+                  FilledButton.icon(
+                    onPressed: () async {
+                      await AuthService.signOut();
                     },
-                    child: GlassContainer(
-                      color: Colors.white,
-                      padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 12),
-                      borderRadius: 12,
-                      child: const Text(
-                        'Sign Out',
-                        style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                    icon: const Icon(Icons.logout_rounded),
+                    label: const Text('Sign Out'),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: const Color(0xFF2ECC71),
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
                       ),
                     ),
                   ),

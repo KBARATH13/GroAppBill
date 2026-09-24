@@ -325,4 +325,21 @@ class CartNotifier extends StateNotifier<CartState> {
       _saveCart();
     }
   }
+
+  void updateItemPrice(int index, double newPrice) {
+    final activeCart = List<CartItem>.from(state.activeCart);
+    if (index < 0 || index >= activeCart.length) return;
+
+    final item = activeCart[index];
+    activeCart[index] = CartItem(
+      product: item.product.copyWith(price: newPrice),
+      quantity: item.quantity,
+      isPriceOverridden: true,
+    );
+
+    final newCarts = List<List<CartItem>>.from(state.carts);
+    newCarts[state.activeIndex] = activeCart;
+    state = state.copyWith(carts: newCarts);
+    _saveCart();
+  }
 }

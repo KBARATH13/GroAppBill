@@ -91,7 +91,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             Navigator.pop(context); // close loading dialog
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
-                content: Text('✓ Inventory published to Firebase successfully!'),
+                content: Text(
+                  '✓ Inventory published to Firebase successfully!',
+                ),
                 backgroundColor: Colors.green,
                 duration: Duration(seconds: 3),
               ),
@@ -145,7 +147,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     final selectedIndex = ref.watch(navigationProvider);
-    
+
     return VibrantBackground(
       child: Scaffold(
         backgroundColor: Colors.transparent,
@@ -159,7 +161,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               return Text(
                 shopInfo.shopName.isEmpty ? 'GroAppBill' : shopInfo.shopName,
                 style: const TextStyle(
-                    fontWeight: FontWeight.bold, letterSpacing: 0.5),
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 0.5,
+                ),
               );
             },
           ),
@@ -168,8 +172,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             if (selectedIndex == 0)
               Consumer(
                 builder: (context, ref, child) {
-                  final cart = ref.watch(cartProvider).carts[
-                      ref.watch(cartProvider).activeIndex];
+                  final cart = ref
+                      .watch(cartProvider)
+                      .carts[ref.watch(cartProvider).activeIndex];
                   return IconButton(
                     icon: Row(
                       mainAxisSize: MainAxisSize.min,
@@ -178,21 +183,29 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                         if (cart.isNotEmpty) ...[
                           const SizedBox(width: 6),
                           Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                            decoration: BoxDecoration(
-                              color: Colors.red,
-                              borderRadius: BorderRadius.circular(10),
-                            ),
                             constraints: const BoxConstraints(
-                              minWidth: 18,
-                              minHeight: 18,
+                              minWidth: 24,
+                              minHeight: 24,
+                            ),
+                            padding: const EdgeInsets.symmetric(horizontal: 6),
+                            alignment: Alignment.center,
+                            decoration: BoxDecoration(
+                              color: Color(0xFF00E5FF),
+                              borderRadius: BorderRadius.circular(12),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Color(0xFF00E5FF).withOpacity(0.35),
+                                  blurRadius: 6,
+                                  spreadRadius: 1,
+                                ),
+                              ],
                             ),
                             child: Text(
                               '${cart.length}',
                               style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 10,
-                                fontWeight: FontWeight.bold,
+                                color: Colors.black,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w800,
                               ),
                               textAlign: TextAlign.center,
                             ),
@@ -240,8 +253,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               AdminScreen(
                 hasPendingSync: false,
                 onSync: () async {},
-                onChangeMade: () => setState(() => _adminHasLocalChanges = true),
-                onPublishComplete: () => setState(() => _adminHasLocalChanges = false),
+                onChangeMade: () =>
+                    setState(() => _adminHasLocalChanges = true),
+                onPublishComplete: () =>
+                    setState(() => _adminHasLocalChanges = false),
               )
             else
               const Center(child: Text('Admin Access Required')),
@@ -367,8 +382,7 @@ class _NavBarItem extends StatelessWidget {
                         decoration: BoxDecoration(
                           color: badgeColor ?? Colors.orange,
                           shape: BoxShape.circle,
-                          border:
-                              Border.all(color: Colors.white24, width: 1.5),
+                          border: Border.all(color: Colors.white24, width: 1.5),
                         ),
                       ),
                     ),
@@ -380,8 +394,7 @@ class _NavBarItem extends StatelessWidget {
                 style: TextStyle(
                   color: isSelected ? Colors.white : Colors.white54,
                   fontSize: 10,
-                  fontWeight:
-                      isSelected ? FontWeight.bold : FontWeight.normal,
+                  fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
                 ),
               ),
             ],

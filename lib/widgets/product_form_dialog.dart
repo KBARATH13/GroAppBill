@@ -10,19 +10,18 @@ class ProductFormDialog extends ConsumerStatefulWidget {
   final Product? product;
   final String? initialBarcode;
 
-  const ProductFormDialog({
-    super.key,
-    this.product,
-    this.initialBarcode,
-  });
+  const ProductFormDialog({super.key, this.product, this.initialBarcode});
 
   @override
   ConsumerState<ProductFormDialog> createState() => _ProductFormDialogState();
 
   /// A unified "Product Not Found" dialog that encourages adding the product to inventory.
-  static Future<void> showProductNotFoundDialog(BuildContext context, String barcode) async {
+  static Future<void> showProductNotFoundDialog(
+    BuildContext context,
+    String barcode,
+  ) async {
     final scheme = Theme.of(context).colorScheme;
-    
+
     final shouldAdd = await showDialog<bool>(
       context: context,
       barrierDismissible: false,
@@ -34,7 +33,9 @@ class ProductFormDialog extends ConsumerStatefulWidget {
             Text('Product Not Found'),
           ],
         ),
-        content: Text('Product with barcode "$barcode" was not found in inventory. Would you like to add it now?'),
+        content: Text(
+          'Product with barcode "$barcode" was not found in inventory. Would you like to add it now?',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
@@ -68,7 +69,7 @@ class _ProductFormDialogState extends ConsumerState<ProductFormDialog> {
   late TextEditingController _customUnitController;
   late FocusNode _customCategoryFocus;
   late FocusNode _customUnitFocus;
-  
+
   String _selectedUnit = 'kg';
   String _selectedCategory = 'Vegetables';
   bool _isCustomCategory = false;
@@ -111,7 +112,7 @@ class _ProductFormDialogState extends ConsumerState<ProductFormDialog> {
     final name = _nameController.text.trim();
     final priceStr = _priceController.text.trim();
     final barcode = _barcodeController.text.trim();
-    
+
     if (name.isEmpty || priceStr.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Please enter name and price')),
@@ -164,7 +165,9 @@ class _ProductFormDialogState extends ConsumerState<ProductFormDialog> {
         category: category,
         barcode: barcode.isNotEmpty ? barcode : null,
       );
-      ref.read(productsProvider.notifier).updateProduct(widget.product!.id, updatedProduct);
+      ref
+          .read(productsProvider.notifier)
+          .updateProduct(widget.product!.id, updatedProduct);
     } else {
       // Add mode
       final newProduct = Product(
@@ -185,10 +188,12 @@ class _ProductFormDialogState extends ConsumerState<ProductFormDialog> {
   Widget build(BuildContext context) {
     final categories = ref.watch(categoriesProvider);
     final units = ref.watch(unitsProvider);
-    
+
     // Ensure selected category is in the list or it's custom
     if (!categories.contains(_selectedCategory) && !_isCustomCategory) {
-      _selectedCategory = categories.isNotEmpty ? categories.first : 'Vegetables';
+      _selectedCategory = categories.isNotEmpty
+          ? categories.first
+          : 'Vegetables';
     }
 
     // Ensure selected unit is in the list or it's custom
@@ -208,7 +213,11 @@ class _ProductFormDialogState extends ConsumerState<ProductFormDialog> {
           children: [
             Text(
               widget.product != null ? 'Edit Product' : 'Add New Product',
-              style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold),
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 22,
+                fontWeight: FontWeight.bold,
+              ),
             ),
             const SizedBox(height: 24),
             Flexible(
@@ -226,7 +235,9 @@ class _ProductFormDialogState extends ConsumerState<ProductFormDialog> {
                         counterStyle: const TextStyle(color: Colors.white38),
                         enabledBorder: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(12),
-                          borderSide: BorderSide(color: Colors.white.withOpacity(0.3)),
+                          borderSide: BorderSide(
+                            color: Colors.white.withOpacity(0.3),
+                          ),
                         ),
                         focusedBorder: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(12),
@@ -235,98 +246,174 @@ class _ProductFormDialogState extends ConsumerState<ProductFormDialog> {
                       ),
                     ),
                     const SizedBox(height: 16),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: TextField(
-                            controller: _priceController,
-                            keyboardType: TextInputType.number,
-                            style: const TextStyle(color: Colors.white),
-                            decoration: InputDecoration(
-                              labelText: 'Price (₹)',
-                              labelStyle: const TextStyle(color: Colors.white70),
-                              enabledBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(12),
-                                borderSide: BorderSide(color: Colors.white.withOpacity(0.3)),
-                              ),
-                              focusedBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(12),
-                                borderSide: const BorderSide(color: Colors.white),
+                    LayoutBuilder(
+                      builder: (context, constraints) {
+                        final isCompact = constraints.maxWidth < 420;
+                        final fieldWidth = isCompact
+                            ? constraints.maxWidth
+                            : (constraints.maxWidth - 12) / 2;
+
+                        return Wrap(
+                          spacing: 12,
+                          runSpacing: 12,
+                          children: [
+                            SizedBox(
+                              width: fieldWidth,
+                              child: TextField(
+                                controller: _priceController,
+                                keyboardType: TextInputType.number,
+                                style: const TextStyle(color: Colors.white),
+                                decoration: InputDecoration(
+                                  labelText: 'Price (₹)',
+                                  labelStyle: const TextStyle(
+                                    color: Colors.white70,
+                                  ),
+                                  enabledBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                    borderSide: BorderSide(
+                                      color: Colors.white.withOpacity(0.3),
+                                    ),
+                                  ),
+                                  focusedBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                    borderSide: const BorderSide(
+                                      color: Colors.white,
+                                    ),
+                                  ),
+                                ),
                               ),
                             ),
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Builder(
-                            builder: (context) {
-                              final scheme = Theme.of(context).colorScheme;
-                              return !_isCustomUnit
-                                  ? DropdownButtonFormField<String>(
-                                      dropdownColor: Colors.blueGrey[900],
-                                      style: const TextStyle(color: Colors.white),
-                                      initialValue: _selectedUnit,
-                                      onChanged: (v) {
-                                        if (v == 'ADD_NEW') {
-                                          setState(() => _isCustomUnit = true);
-                                          WidgetsBinding.instance.addPostFrameCallback((_) {
-                                            _customUnitFocus.requestFocus();
-                                          });
-                                        } else {
-                                          setState(() => _selectedUnit = v!);
-                                        }
-                                      },
-                                      items: [
-                                        ...units.map((u) => DropdownMenuItem(value: u, child: Text(u))),
-                                        DropdownMenuItem(
-                                          value: 'ADD_NEW',
-                                          child: Text('+ New...', style: TextStyle(color: scheme.primary, fontWeight: FontWeight.bold)),
-                                        ),
-                                      ],
-                                      decoration: InputDecoration(
-                                        labelText: 'Unit',
-                                        labelStyle: const TextStyle(color: Colors.white70),
-                                        enabledBorder: OutlineInputBorder(
-                                          borderRadius: BorderRadius.circular(12),
-                                          borderSide: BorderSide(color: Colors.white.withOpacity(0.3)),
-                                        ),
-                                        focusedBorder: OutlineInputBorder(
-                                          borderRadius: BorderRadius.circular(12),
-                                          borderSide: const BorderSide(color: Colors.white),
-                                        ),
-                                      ),
-                                    )
-                                  : Row(
-                                      children: [
-                                        Expanded(
-                                          child: TextField(
-                                            controller: _customUnitController,
-                                            focusNode: _customUnitFocus,
-                                            style: const TextStyle(color: Colors.white),
-                                            decoration: InputDecoration(
-                                              labelText: 'Custom Unit',
-                                              labelStyle: const TextStyle(color: Colors.white70),
-                                              enabledBorder: OutlineInputBorder(
-                                                borderRadius: BorderRadius.circular(12),
-                                                borderSide: BorderSide(color: Colors.white.withOpacity(0.3)),
+                            SizedBox(
+                              width: fieldWidth,
+                              child: Builder(
+                                builder: (context) {
+                                  final scheme = Theme.of(context).colorScheme;
+                                  return !_isCustomUnit
+                                      ? DropdownButtonFormField<String>(
+                                          dropdownColor: Colors.blueGrey[900],
+                                          style: const TextStyle(
+                                            color: Colors.white,
+                                          ),
+                                          initialValue: _selectedUnit,
+                                          onChanged: (v) {
+                                            if (v == 'ADD_NEW') {
+                                              setState(
+                                                () => _isCustomUnit = true,
+                                              );
+                                              WidgetsBinding.instance
+                                                  .addPostFrameCallback((_) {
+                                                    _customUnitFocus
+                                                        .requestFocus();
+                                                  });
+                                            } else {
+                                              setState(
+                                                () => _selectedUnit = v!,
+                                              );
+                                            }
+                                          },
+                                          items: [
+                                            ...units.map(
+                                              (u) => DropdownMenuItem(
+                                                value: u,
+                                                child: Text(u),
                                               ),
-                                              focusedBorder: OutlineInputBorder(
-                                                borderRadius: BorderRadius.circular(12),
-                                                borderSide: const BorderSide(color: Colors.white),
+                                            ),
+                                            DropdownMenuItem(
+                                              value: 'ADD_NEW',
+                                              child: Text(
+                                                '+ New...',
+                                                style: TextStyle(
+                                                  color: scheme.primary,
+                                                  fontWeight: FontWeight.bold,
+                                                ),
+                                              ),
+                                            ),
+                                          ],
+                                          decoration: InputDecoration(
+                                            labelText: 'Unit',
+                                            labelStyle: const TextStyle(
+                                              color: Colors.white70,
+                                            ),
+                                            enabledBorder: OutlineInputBorder(
+                                              borderRadius:
+                                                  BorderRadius.circular(12),
+                                              borderSide: BorderSide(
+                                                color: Colors.white.withOpacity(
+                                                  0.3,
+                                                ),
+                                              ),
+                                            ),
+                                            focusedBorder: OutlineInputBorder(
+                                              borderRadius:
+                                                  BorderRadius.circular(12),
+                                              borderSide: const BorderSide(
+                                                color: Colors.white,
                                               ),
                                             ),
                                           ),
-                                        ),
-                                        IconButton(
-                                          icon: const Icon(Icons.close, color: Colors.white54),
-                                          onPressed: () => setState(() => _isCustomUnit = false),
-                                        ),
-                                      ],
-                                    );
-                            },
-                          ),
-                        ),
-                      ],
+                                        )
+                                      : Wrap(
+                                          spacing: 4,
+                                          crossAxisAlignment:
+                                              WrapCrossAlignment.center,
+                                          children: [
+                                            SizedBox(
+                                              width: fieldWidth - 36,
+                                              child: TextField(
+                                                controller:
+                                                    _customUnitController,
+                                                focusNode: _customUnitFocus,
+                                                style: const TextStyle(
+                                                  color: Colors.white,
+                                                ),
+                                                decoration: InputDecoration(
+                                                  labelText: 'Custom Unit',
+                                                  labelStyle: const TextStyle(
+                                                    color: Colors.white70,
+                                                  ),
+                                                  enabledBorder:
+                                                      OutlineInputBorder(
+                                                        borderRadius:
+                                                            BorderRadius.circular(
+                                                              12,
+                                                            ),
+                                                        borderSide: BorderSide(
+                                                          color: Colors.white
+                                                              .withOpacity(0.3),
+                                                        ),
+                                                      ),
+                                                  focusedBorder:
+                                                      OutlineInputBorder(
+                                                        borderRadius:
+                                                            BorderRadius.circular(
+                                                              12,
+                                                            ),
+                                                        borderSide:
+                                                            const BorderSide(
+                                                              color:
+                                                                  Colors.white,
+                                                            ),
+                                                      ),
+                                                ),
+                                              ),
+                                            ),
+                                            IconButton(
+                                              icon: const Icon(
+                                                Icons.close,
+                                                color: Colors.white54,
+                                              ),
+                                              onPressed: () => setState(
+                                                () => _isCustomUnit = false,
+                                              ),
+                                            ),
+                                          ],
+                                        );
+                                },
+                              ),
+                            ),
+                          ],
+                        );
+                      },
                     ),
                     const SizedBox(height: 16),
                     if (!_isCustomCategory)
@@ -345,10 +432,18 @@ class _ProductFormDialogState extends ConsumerState<ProductFormDialog> {
                           }
                         },
                         items: [
-                          ...categories.map((c) => DropdownMenuItem(value: c, child: Text(c))),
+                          ...categories.map(
+                            (c) => DropdownMenuItem(value: c, child: Text(c)),
+                          ),
                           const DropdownMenuItem(
                             value: 'ADD_NEW',
-                            child: Text('+ Other (Custom)...', style: TextStyle(color: Colors.blue, fontWeight: FontWeight.bold)),
+                            child: Text(
+                              '+ Other (Custom)...',
+                              style: TextStyle(
+                                color: Colors.blue,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
                           ),
                         ],
                         decoration: InputDecoration(
@@ -356,7 +451,9 @@ class _ProductFormDialogState extends ConsumerState<ProductFormDialog> {
                           labelStyle: const TextStyle(color: Colors.white70),
                           enabledBorder: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(12),
-                            borderSide: BorderSide(color: Colors.white.withOpacity(0.3)),
+                            borderSide: BorderSide(
+                              color: Colors.white.withOpacity(0.3),
+                            ),
                           ),
                           focusedBorder: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(12),
@@ -374,21 +471,31 @@ class _ProductFormDialogState extends ConsumerState<ProductFormDialog> {
                               style: const TextStyle(color: Colors.white),
                               decoration: InputDecoration(
                                 labelText: 'Custom Category',
-                                labelStyle: const TextStyle(color: Colors.white70),
+                                labelStyle: const TextStyle(
+                                  color: Colors.white70,
+                                ),
                                 enabledBorder: OutlineInputBorder(
                                   borderRadius: BorderRadius.circular(12),
-                                  borderSide: BorderSide(color: Colors.white.withOpacity(0.3)),
+                                  borderSide: BorderSide(
+                                    color: Colors.white.withOpacity(0.3),
+                                  ),
                                 ),
                                 focusedBorder: OutlineInputBorder(
                                   borderRadius: BorderRadius.circular(12),
-                                  borderSide: const BorderSide(color: Colors.white),
+                                  borderSide: const BorderSide(
+                                    color: Colors.white,
+                                  ),
                                 ),
                               ),
                             ),
                           ),
                           IconButton(
-                            icon: const Icon(Icons.close, color: Colors.white54),
-                            onPressed: () => setState(() => _isCustomCategory = false),
+                            icon: const Icon(
+                              Icons.close,
+                              color: Colors.white54,
+                            ),
+                            onPressed: () =>
+                                setState(() => _isCustomCategory = false),
                           ),
                         ],
                       ),
@@ -399,10 +506,15 @@ class _ProductFormDialogState extends ConsumerState<ProductFormDialog> {
                       decoration: InputDecoration(
                         labelText: 'Barcode (Optional)',
                         labelStyle: const TextStyle(color: Colors.white70),
-                        prefixIcon: const Icon(Icons.qr_code_scanner, color: Colors.white70),
+                        prefixIcon: const Icon(
+                          Icons.qr_code_scanner,
+                          color: Colors.white70,
+                        ),
                         enabledBorder: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(12),
-                          borderSide: BorderSide(color: Colors.white.withOpacity(0.3)),
+                          borderSide: BorderSide(
+                            color: Colors.white.withOpacity(0.3),
+                          ),
                         ),
                         focusedBorder: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(12),
@@ -420,18 +532,30 @@ class _ProductFormDialogState extends ConsumerState<ProductFormDialog> {
               children: [
                 TextButton(
                   onPressed: () => Navigator.pop(context),
-                  child: const Text('Cancel', style: TextStyle(color: Colors.white54, fontWeight: FontWeight.bold)),
+                  child: const Text(
+                    'Cancel',
+                    style: TextStyle(
+                      color: Colors.white54,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
                 ),
                 const SizedBox(width: 16),
                 GestureDetector(
                   onTap: _handleSave,
                   child: GlassContainer(
                     color: Colors.blue,
-                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 24,
+                      vertical: 12,
+                    ),
                     borderRadius: 12,
                     child: Text(
                       widget.product != null ? 'Update' : 'Save',
-                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                   ),
                 ),

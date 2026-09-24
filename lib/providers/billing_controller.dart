@@ -60,13 +60,6 @@ class BillingController {
 
       final adminEmail = ref.read(appUserProvider).valueOrNull?.adminEmail;
       
-      if (isPrint) {
-        final result = await PrinterService.sendBillToPrinter(bill);
-        if (result['success'] != true) {
-          return {'success': false, 'message': result['message'] ?? 'Print failed'};
-        }
-      }
-
       await HistoryService.saveBill(
         bill,
         adminEmail: adminEmail ?? 'local-only',
@@ -74,11 +67,21 @@ class BillingController {
         replaceFirestoreId: cartState.editingFirestoreId,
       );
 
+      if (isPrint) {
+        final result = await PrinterService.sendBillToPrinter(bill);
+        if (result['success'] != true) {
+          ref.read(cartProvider.notifier).clearCart();
+          ref.read(cartProvider.notifier).clearEditingState();
+          ref.read(deliveryInfoProvider.notifier).reset();
+          return {'success': true, 'bill': bill, 'printSucceeded': false, 'message': result['message'] ?? 'Print failed'};
+        }
+      }
+
       ref.read(cartProvider.notifier).clearCart();
       ref.read(cartProvider.notifier).clearEditingState();
       ref.read(deliveryInfoProvider.notifier).reset();
 
-      return {'success': true, 'bill': bill};
+      return {'success': true, 'bill': bill, 'printSucceeded': isPrint};
     } catch (e) {
       return {'success': false, 'message': e.toString()};
     }

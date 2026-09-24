@@ -33,7 +33,8 @@ class _AdminScreenState extends ConsumerState<AdminScreen> {
   late TextEditingController _searchController;
   bool _isProcessingScan = false;
   bool _isPublishing = false;
-  bool _hasLocalChanges = false; // true when admin has unpublished inventory changes
+  bool _hasLocalChanges =
+      false; // true when admin has unpublished inventory changes
 
   @override
   void initState() {
@@ -65,7 +66,9 @@ class _AdminScreenState extends ConsumerState<AdminScreen> {
       final user = ref.read(appUserProvider).valueOrNull;
       if (user?.isAdmin != true && user?.canAddInventory != true) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Access Denied: Inventory clearance required')),
+          const SnackBar(
+            content: Text('Access Denied: Inventory clearance required'),
+          ),
         );
         return;
       }
@@ -92,42 +95,44 @@ class _AdminScreenState extends ConsumerState<AdminScreen> {
                 Icon(Icons.qr_code_scanner, color: scheme.secondary),
               ],
             ),
-        content: SizedBox(
-          width: double.maxFinite,
-          height: 300,
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(12),
-            child: MobileScanner(
-              controller: dialogController,
-              onDetect: (capture) async {
-                if (_isProcessingScan) return;
-                
-                final List<Barcode> barcodes = capture.barcodes;
-                for (final barcode in barcodes) {
-                  if (barcode.rawValue != null) {
-                    _isProcessingScan = true;
-                    debugPrint('Barcode detected: ${barcode.rawValue}');
-                    
-                    await _onBarcodeScanned(barcode.rawValue!);
-                    await Future.delayed(const Duration(milliseconds: 1500));
-                    
-                    _isProcessingScan = false;
-                    break;
-                  }
-                }
-              },
+            content: SizedBox(
+              width: double.maxFinite,
+              height: 300,
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: MobileScanner(
+                  controller: dialogController,
+                  onDetect: (capture) async {
+                    if (_isProcessingScan) return;
+
+                    final List<Barcode> barcodes = capture.barcodes;
+                    for (final barcode in barcodes) {
+                      if (barcode.rawValue != null) {
+                        _isProcessingScan = true;
+                        debugPrint('Barcode detected: ${barcode.rawValue}');
+
+                        await _onBarcodeScanned(barcode.rawValue!);
+                        await Future.delayed(
+                          const Duration(milliseconds: 1500),
+                        );
+
+                        _isProcessingScan = false;
+                        break;
+                      }
+                    }
+                  },
+                ),
+              ),
             ),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () {
-              dialogController.dispose();
-              Navigator.pop(dialogCtx);
-            },
-            child: const Text('Done'),
-          ),
-        ],
+            actions: [
+              TextButton(
+                onPressed: () {
+                  dialogController.dispose();
+                  Navigator.pop(dialogCtx);
+                },
+                child: const Text('Done'),
+              ),
+            ],
           );
         },
       ),
@@ -140,7 +145,9 @@ class _AdminScreenState extends ConsumerState<AdminScreen> {
     final user = ref.read(appUserProvider).valueOrNull;
     if (user?.isAdmin != true && user?.canAddInventory != true) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Access Denied: Inventory clearance required')),
+        const SnackBar(
+          content: Text('Access Denied: Inventory clearance required'),
+        ),
       );
       return;
     }
@@ -241,7 +248,9 @@ class _AdminScreenState extends ConsumerState<AdminScreen> {
     final user = ref.read(appUserProvider).valueOrNull;
     if (user?.isAdmin != true && user?.canAddInventory != true) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Access Denied: Admin or Inventory clearance required')),
+        const SnackBar(
+          content: Text('Access Denied: Admin or Inventory clearance required'),
+        ),
       );
       return;
     }
@@ -275,7 +284,9 @@ class _AdminScreenState extends ConsumerState<AdminScreen> {
                   onPressed: () => Navigator.pop(ctx, true),
                   icon: const Icon(Icons.cloud_upload),
                   label: const Text('Publish'),
-                  style: ElevatedButton.styleFrom(backgroundColor: scheme.secondary),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: scheme.secondary,
+                  ),
                 ),
               ],
             );
@@ -293,12 +304,16 @@ class _AdminScreenState extends ConsumerState<AdminScreen> {
       if (mounted) {
         final scheme = Theme.of(context).colorScheme;
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: const Text('Inventory is synced automatically in real-time'), backgroundColor: scheme.primary),
+          SnackBar(
+            content: const Text(
+              'Inventory is synced automatically in real-time',
+            ),
+            backgroundColor: scheme.primary,
+          ),
         );
       }
     }
   }
-
 
   void _handleDelete(String id) {
     showDialog(
@@ -308,7 +323,9 @@ class _AdminScreenState extends ConsumerState<AdminScreen> {
           final scheme = Theme.of(context).colorScheme;
           return AlertDialog(
             title: const Text('Delete Product'),
-            content: const Text('Are you sure you want to delete this product?'),
+            content: const Text(
+              'Are you sure you want to delete this product?',
+            ),
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(context),
@@ -321,7 +338,9 @@ class _AdminScreenState extends ConsumerState<AdminScreen> {
                   widget.onChangeMade?.call();
                   Navigator.pop(context);
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Product deleted (unpublished)')),
+                    const SnackBar(
+                      content: Text('Product deleted (unpublished)'),
+                    ),
                   );
                 },
                 child: Text('Yes', style: TextStyle(color: scheme.error)),
@@ -350,7 +369,10 @@ class _AdminScreenState extends ConsumerState<AdminScreen> {
                   padding: const EdgeInsets.all(16.0),
                   child: Text(
                     product.name,
-                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                 ),
                 const Divider(height: 1),
@@ -365,13 +387,16 @@ class _AdminScreenState extends ConsumerState<AdminScreen> {
                   ),
                   ListTile(
                     leading: Icon(Icons.delete, color: scheme.error),
-                    title: Text('Delete Product', style: TextStyle(color: scheme.error)),
+                    title: Text(
+                      'Delete Product',
+                      style: TextStyle(color: scheme.error),
+                    ),
                     onTap: () {
                       Navigator.pop(ctx);
                       _handleDelete(product.id);
                     },
                   ),
-                ] else 
+                ] else
                   const ListTile(
                     leading: Icon(Icons.info_outline, color: Colors.grey),
                     title: Text('View Only (Admin required to edit)'),
@@ -385,14 +410,17 @@ class _AdminScreenState extends ConsumerState<AdminScreen> {
     );
   }
 
-
-
-
   @override
   Widget build(BuildContext context) {
     final products = ref.watch(productsProvider);
     final categories = ref.watch(categoriesProvider);
     final scheme = Theme.of(context).colorScheme;
+    final sortedCategories = sortCategoriesForDisplay(categories, products);
+
+    final dashboardCategories = <String>['All'];
+    for (final category in sortedCategories) {
+      if (category != 'All') dashboardCategories.add(category);
+    }
 
     final filteredProducts = products.where((product) {
       final matchesSearch = product.name.toLowerCase().contains(
@@ -405,7 +433,9 @@ class _AdminScreenState extends ConsumerState<AdminScreen> {
 
     // Sorting Logic
     if (_sortBy == 'Name (A-Z)') {
-      filteredProducts.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+      filteredProducts.sort(
+        (a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()),
+      );
     } else if (_sortBy == 'Price: Low to High') {
       filteredProducts.sort((a, b) => a.price.compareTo(b.price));
     } else if (_sortBy == 'Price: High to Low') {
@@ -433,7 +463,10 @@ class _AdminScreenState extends ConsumerState<AdminScreen> {
                         children: [
                           Text(
                             'Manage your products',
-                            style: TextStyle(fontSize: 14, color: Colors.white70),
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: Colors.white70,
+                            ),
                           ),
                         ],
                       ),
@@ -447,8 +480,12 @@ class _AdminScreenState extends ConsumerState<AdminScreen> {
                             clipBehavior: Clip.none,
                             children: [
                               Icon(
-                                _hasLocalChanges ? Icons.cloud_upload : Icons.sync,
-                                color: _hasLocalChanges ? scheme.error : Colors.white,
+                                _hasLocalChanges
+                                    ? Icons.cloud_upload
+                                    : Icons.sync,
+                                color: _hasLocalChanges
+                                    ? scheme.error
+                                    : Colors.white,
                               ),
                               if (widget.hasPendingSync || _hasLocalChanges)
                                 Positioned(
@@ -458,9 +495,14 @@ class _AdminScreenState extends ConsumerState<AdminScreen> {
                                     width: 10,
                                     height: 10,
                                     decoration: BoxDecoration(
-                                      color: _hasLocalChanges ? scheme.error : scheme.tertiary,
+                                      color: _hasLocalChanges
+                                          ? scheme.error
+                                          : scheme.tertiary,
                                       shape: BoxShape.circle,
-                                      border: Border.all(color: Colors.white24, width: 1.5),
+                                      border: Border.all(
+                                        color: Colors.white24,
+                                        width: 1.5,
+                                      ),
                                     ),
                                   ),
                                 ),
@@ -471,7 +513,9 @@ class _AdminScreenState extends ConsumerState<AdminScreen> {
                       label: Text(
                         _isPublishing
                             ? 'Publishing...'
-                            : (_hasLocalChanges ? 'Publish' : (widget.hasPendingSync ? 'Sync!' : 'Sync')),
+                            : (_hasLocalChanges
+                                  ? 'Publish'
+                                  : (widget.hasPendingSync ? 'Sync!' : 'Sync')),
                         style: const TextStyle(fontWeight: FontWeight.bold),
                       ),
                       style: ElevatedButton.styleFrom(
@@ -480,21 +524,35 @@ class _AdminScreenState extends ConsumerState<AdminScreen> {
                             : Colors.white.withOpacity(0.1),
                         foregroundColor: Colors.white,
                         elevation: 0,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
                       ),
                     ),
                     const SizedBox(width: 8),
-                    if (ref.read(appUserProvider).valueOrNull?.isAdmin == true ||
-                        ref.read(appUserProvider).valueOrNull?.canAddInventory == true)
+                    if (ref.read(appUserProvider).valueOrNull?.isAdmin ==
+                            true ||
+                        ref
+                                .read(appUserProvider)
+                                .valueOrNull
+                                ?.canAddInventory ==
+                            true)
                       ElevatedButton.icon(
                         onPressed: _openAddForm,
                         icon: const Icon(Icons.add),
-                        label: const Text('Add', style: TextStyle(fontWeight: FontWeight.bold)),
+                        label: const Text(
+                          'Add',
+                          style: TextStyle(fontWeight: FontWeight.bold),
+                        ),
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF2ECC71).withOpacity(0.4),
+                          backgroundColor: const Color(
+                            0xFF2ECC71,
+                          ).withOpacity(0.4),
                           foregroundColor: Colors.white,
                           elevation: 0,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
                         ),
                       ),
                   ],
@@ -515,7 +573,10 @@ class _AdminScreenState extends ConsumerState<AdminScreen> {
                       children: [
                         if (_searchQuery.isNotEmpty)
                           IconButton(
-                            icon: const Icon(Icons.clear, color: Colors.white70),
+                            icon: const Icon(
+                              Icons.clear,
+                              color: Colors.white70,
+                            ),
                             onPressed: () {
                               _searchController.clear();
                               setState(() => _searchQuery = '');
@@ -523,7 +584,10 @@ class _AdminScreenState extends ConsumerState<AdminScreen> {
                             tooltip: 'Clear Search',
                           ),
                         IconButton(
-                          icon: const Icon(Icons.qr_code_scanner, color: Colors.white),
+                          icon: const Icon(
+                            Icons.qr_code_scanner,
+                            color: Colors.white,
+                          ),
                           onPressed: _openBarcodeScanner,
                           tooltip: 'Scan Barcode',
                         ),
@@ -531,7 +595,9 @@ class _AdminScreenState extends ConsumerState<AdminScreen> {
                     ),
                     enabledBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide(color: Colors.white.withOpacity(0.3)),
+                      borderSide: BorderSide(
+                        color: Colors.white.withOpacity(0.3),
+                      ),
                     ),
                     focusedBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
@@ -541,39 +607,83 @@ class _AdminScreenState extends ConsumerState<AdminScreen> {
                 ),
                 const SizedBox(height: 12),
 
-                // Categories Row
-                SizedBox(
-                  height: 44,
-                  child: ListView.builder(
-                    scrollDirection: Axis.horizontal,
-                    itemCount: categories.length + 1,
-                    itemBuilder: (context, index) {
-                      final category = index == 0 ? 'All' : categories[index - 1];
-                      final isSelected = _filterCategory == category;
-                      return Padding(
-                        padding: const EdgeInsets.only(right: 8.0),
-                        child: GestureDetector(
-                          onTap: () => setState(() => _filterCategory = category),
-                          child: GlassContainer(
-                            color: isSelected ? scheme.primary.withOpacity(0.4) : Colors.white.withOpacity(0.12),
-                            borderRadius: 12,
-                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                            child: Center(
-                              child: Text(
-                                category,
-                                style: TextStyle(
-                                  fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                                  color: Colors.white,
+                if (products.isNotEmpty) ...[
+                  Text(
+                    'Category Overview',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      color: Colors.white70,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  SizedBox(
+                    height: 94,
+                    child: ListView.builder(
+                      scrollDirection: Axis.horizontal,
+                      itemCount: dashboardCategories.length,
+                      itemBuilder: (context, index) {
+                        final category = dashboardCategories[index];
+                        final count = category == 'All'
+                            ? products.length
+                            : products
+                                  .where(
+                                    (product) => product.category == category,
+                                  )
+                                  .length;
+                        final isSelected = _filterCategory == category;
+
+                        return Padding(
+                          padding: const EdgeInsets.only(right: 10.0),
+                          child: GestureDetector(
+                            onTap: () =>
+                                setState(() => _filterCategory = category),
+                            child: GlassContainer(
+                              color: isSelected
+                                  ? scheme.primary.withOpacity(0.45)
+                                  : Colors.white.withOpacity(0.12),
+                              borderRadius: 16,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 10,
+                              ),
+                              child: SizedBox(
+                                width: 112,
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  mainAxisAlignment:
+                                      MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Text(
+                                      category,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.white,
+                                        fontSize: 12,
+                                      ),
+                                    ),
+                                    Text(
+                                      '$count',
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 26,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ),
                             ),
                           ),
-                        ),
-                      );
-                    },
+                        );
+                      },
+                    ),
                   ),
-                ),
-                const SizedBox(height: 20),
+                  const SizedBox(height: 14),
+                ],
+
+                const SizedBox(height: 6),
 
                 // Sorting Dropdown
                 DropdownButtonFormField<String>(
@@ -585,17 +695,25 @@ class _AdminScreenState extends ConsumerState<AdminScreen> {
                     labelStyle: const TextStyle(color: Colors.white70),
                     enabledBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide(color: Colors.white.withOpacity(0.3)),
+                      borderSide: BorderSide(
+                        color: Colors.white.withOpacity(0.3),
+                      ),
                     ),
                     focusedBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
                       borderSide: const BorderSide(color: Colors.white),
                     ),
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 8,
+                    ),
                   ),
-                  items: ['Name (A-Z)', 'Price: Low to High', 'Price: High to Low']
-                      .map((s) => DropdownMenuItem(value: s, child: Text(s)))
-                      .toList(),
+                  items:
+                      ['Name (A-Z)', 'Price: Low to High', 'Price: High to Low']
+                          .map(
+                            (s) => DropdownMenuItem(value: s, child: Text(s)),
+                          )
+                          .toList(),
                   onChanged: (v) {
                     if (v != null) setState(() => _sortBy = v);
                   },
@@ -603,7 +721,9 @@ class _AdminScreenState extends ConsumerState<AdminScreen> {
                 const SizedBox(height: 16),
 
                 // Local Changes Notification
-                if (filteredProducts.isNotEmpty && !_hasLocalChanges && widget.hasPendingSync)
+                if (filteredProducts.isNotEmpty &&
+                    !_hasLocalChanges &&
+                    widget.hasPendingSync)
                   Padding(
                     padding: const EdgeInsets.only(bottom: 12),
                     child: GlassContainer(
@@ -616,7 +736,10 @@ class _AdminScreenState extends ConsumerState<AdminScreen> {
                           Expanded(
                             child: Text(
                               'Note: Your inventory is currently local. Publish it to allow other devices to sync.',
-                              style: TextStyle(color: Colors.white, fontSize: 13),
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 13,
+                              ),
                             ),
                           ),
                         ],
@@ -633,79 +756,83 @@ class _AdminScreenState extends ConsumerState<AdminScreen> {
           const SliverFillRemaining(
             hasScrollBody: false,
             child: Center(
-              child: Text('No products found', style: TextStyle(color: Colors.white70)),
+              child: Text(
+                'No products found',
+                style: TextStyle(color: Colors.white70),
+              ),
             ),
           )
         else
           SliverPadding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 120), // Bottom padding for nav
+            padding: const EdgeInsets.fromLTRB(
+              16,
+              8,
+              16,
+              120,
+            ), // Bottom padding for nav
             sliver: SliverList(
-              delegate: SliverChildBuilderDelegate(
-                (context, index) {
-                  final product = filteredProducts[index];
-                  return Container(
-                    margin: const EdgeInsets.only(bottom: 12),
-                    child: GlassContainer(
-                      borderRadius: 16,
-                      child: InkWell(
-                        borderRadius: BorderRadius.circular(16),
-                        onTap: () => _showProductOptions(product),
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 20,
-                            vertical: 16,
-                          ),
-                          child: Row(
-                            children: [
-                              Expanded(
-                                flex: 3,
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      product.name,
-                                      style: const TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 16,
-                                        color: Colors.white,
-                                      ),
+              delegate: SliverChildBuilderDelegate((context, index) {
+                final product = filteredProducts[index];
+                return Container(
+                  margin: const EdgeInsets.only(bottom: 12),
+                  child: GlassContainer(
+                    borderRadius: 16,
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(16),
+                      onTap: () => _showProductOptions(product),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 20,
+                          vertical: 16,
+                        ),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              flex: 3,
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    product.name,
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 16,
+                                      color: Colors.white,
                                     ),
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      '${product.category} • ${product.unit}',
-                                      style: const TextStyle(
-                                        color: Colors.white60,
-                                        fontSize: 12,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              Expanded(
-                                flex: 1,
-                                child: Text(
-                                  '₹${product.price}',
-                                  textAlign: TextAlign.right,
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 20,
-                                    color: Colors.white,
                                   ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    '${product.category} • ${product.unit}',
+                                    style: const TextStyle(
+                                      color: Colors.white60,
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            Expanded(
+                              flex: 1,
+                              child: Text(
+                                '₹${product.price}',
+                                textAlign: TextAlign.right,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 20,
+                                  color: Colors.white,
                                 ),
                               ),
-                            ],
-                          ),
+                            ),
+                          ],
                         ),
                       ),
                     ),
-                  );
-                },
-                childCount: filteredProducts.length,
-              ),
+                  ),
+                );
+              }, childCount: filteredProducts.length),
             ),
           ),
       ],
     );
   }
-
 }
