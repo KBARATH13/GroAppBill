@@ -1,5 +1,6 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../models/app_user.dart';
 import '../models/shop_info.dart';
 import '../models/billing_history.dart';
@@ -19,41 +20,38 @@ class AuthService {
   }
 
   /// Stream that emits a fresh [AppUser] whenever auth state or Firestore doc changes.
-  /// On repeat launches, the first emit is served from Firestore offline cache
-  /// (near-instant), eliminating the visible loading spinner.
   static Stream<AppUser?> get appUserStream async* {
-    // ── Fast path: pre-fetch using the synchronous currentUser ──────────────
-    // FirebaseAuth restores the sign-in token from local storage synchronously.
-    // With Firestore persistence enabled, fetchAppUser() will be served from
-    // the device cache on repeat launches (~10-50ms instead of 1-3 seconds).
-    final currentUser = _auth.currentUser;
-    if (currentUser != null) {
-      final cached = await fetchAppUser(currentUser.uid);
-      if (cached != null) {
-        if (cached.isBlocked) {
-          await _auth.signOut();
-          yield null;
-        } else {
-          yield cached; // ← App renders immediately from cache
-        }
-      }
-    } else {
-      yield null; // Not signed in — go straight to login screen
-    }
-
-    // ── Slow path: keep listening for real-time auth changes ────────────────
+    // ── Listen to real-time auth changes ────────────────
     // This handles sign-in, sign-out, and server-side user doc changes.
+    // We avoid yielding null synchronously on startup to prevent flashing the login screen.
     await for (final firebaseUser in _auth.authStateChanges()) {
       if (firebaseUser == null) {
         yield null;
         continue;
       }
-      final user = await fetchAppUser(firebaseUser.uid);
-      if (user?.isBlocked == true) {
-        await _auth.signOut();
-        yield null;
-      } else {
-        yield user;
+      try {
+        final user = await fetchAppUser(firebaseUser.uid);
+        if (user?.isBlocked == true) {
+          await signOut();
+          yield null;
+        } else if (user != null) {
+          yield user;
+        } else {
+          // If the Firestore document is missing but they are authenticated,
+          // wait a moment and retry to allow account healing in signIn to complete.
+          await Future.delayed(const Duration(seconds: 2));
+          final retryUser = await fetchAppUser(firebaseUser.uid);
+          if (retryUser != null) {
+            yield retryUser;
+          } else {
+             // If still null, log them out as their account is genuinely missing
+             await signOut();
+             yield null;
+          }
+        }
+      } catch (e) {
+        // On network error or timeout, we don't yield null (which would log them out).
+        // The stream remains in its last state.
       }
     }
   }
@@ -150,6 +148,11 @@ class AuthService {
 
   /// Sign out.
   static Future<void> signOut() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('grocery-user');
+      await prefs.remove('grocery-carts');
+    } catch (_) {}
     await _auth.signOut();
   }
 

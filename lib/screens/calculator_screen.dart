@@ -273,9 +273,9 @@ class _CalculatorScreenState extends ConsumerState<CalculatorScreen>
     final expressionDisplay = '$fullExpr=$resultStr';
 
     setState(() {
-      _controller.text = resultStr;
+      _controller.text = fullExpr;
       _controller.selection = TextSelection.fromPosition(
-        TextPosition(offset: resultStr.length),
+        TextPosition(offset: fullExpr.length),
       );
       _justEvaluated = true;
     });
@@ -445,7 +445,7 @@ class _CalculatorScreenState extends ConsumerState<CalculatorScreen>
                         ),
                       
                       // Result line (if not evaluated yet)
-                      if (_realTimeResult.isNotEmpty && !_justEvaluated)
+                      if (_realTimeResult.isNotEmpty)
                         Text(
                           '= $_realTimeResult',
                           style: TextStyle(

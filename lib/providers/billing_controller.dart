@@ -73,7 +73,13 @@ class BillingController {
           ref.read(cartProvider.notifier).clearCart();
           ref.read(cartProvider.notifier).clearEditingState();
           ref.read(deliveryInfoProvider.notifier).reset();
-          return {'success': true, 'bill': bill, 'printSucceeded': false, 'message': result['message'] ?? 'Print failed'};
+          return {
+            'success': true,
+            'bill': bill,
+            'printSucceeded': false,
+            'message':
+                '${result['message'] ?? 'Print failed'} The bill was saved to local history.',
+          };
         }
       }
 

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/index.dart';
 import '../providers/app_providers.dart';
 import 'glass_container.dart';
+import 'category_sort_button.dart';
 
 /// A reusable dialog for adding and editing products.
 /// Handles custom category entry and persistence.
@@ -74,6 +75,7 @@ class _ProductFormDialogState extends ConsumerState<ProductFormDialog> {
   String _selectedCategory = 'Vegetables';
   bool _isCustomCategory = false;
   bool _isCustomUnit = false;
+  bool _categoriesAlphabetical = false;
 
   @override
   void initState() {
@@ -137,9 +139,7 @@ class _ProductFormDialogState extends ConsumerState<ProductFormDialog> {
         );
         return;
       }
-      category = customCat;
-      // Add to global categories list
-      ref.read(categoriesProvider.notifier).addCategory(category);
+      category = ref.read(categoriesProvider.notifier).addCategory(customCat);
     }
 
     String unit = _selectedUnit;
@@ -187,12 +187,40 @@ class _ProductFormDialogState extends ConsumerState<ProductFormDialog> {
   @override
   Widget build(BuildContext context) {
     final categories = ref.watch(categoriesProvider);
+    final products = ref.watch(productsProvider);
+    final shopInfo = ref.watch(shopInfoProvider);
+    final sortedCategories = sortCategoriesForDisplay(
+      categories,
+      products,
+      alphabetical: _categoriesAlphabetical,
+      excludedCategories: shopInfo.deletedCategories,
+    );
     final units = ref.watch(unitsProvider);
+    final keepDeletedCategoryOnEdit =
+        widget.product != null &&
+        shopInfo.deletedCategories.any(
+          (category) =>
+              normalizeCategoryName(category) ==
+              normalizeCategoryName(widget.product!.category),
+        ) &&
+        _selectedCategory == widget.product!.category;
 
-    // Ensure selected category is in the list or it's custom
-    if (!categories.contains(_selectedCategory) && !_isCustomCategory) {
-      _selectedCategory = categories.isNotEmpty
-          ? categories.first
+    if (!keepDeletedCategoryOnEdit && !_isCustomCategory) {
+      for (final category in sortedCategories) {
+        if (normalizeCategoryName(category) ==
+            normalizeCategoryName(_selectedCategory)) {
+          _selectedCategory = category;
+          break;
+        }
+      }
+    }
+
+    // Keep product-derived categories selected even if shop metadata lacks them.
+    if (!sortedCategories.contains(_selectedCategory) &&
+        !_isCustomCategory &&
+        !keepDeletedCategoryOnEdit) {
+      _selectedCategory = sortedCategories.isNotEmpty
+          ? sortedCategories.first
           : 'Vegetables';
     }
 
@@ -248,17 +276,16 @@ class _ProductFormDialogState extends ConsumerState<ProductFormDialog> {
                     const SizedBox(height: 16),
                     LayoutBuilder(
                       builder: (context, constraints) {
-                        final isCompact = constraints.maxWidth < 420;
-                        final fieldWidth = isCompact
-                            ? constraints.maxWidth
-                            : (constraints.maxWidth - 12) / 2;
+                        final compact = constraints.maxWidth < 360;
+                        final gap = compact ? 6.0 : 12.0;
+                        final priceWidth = (constraints.maxWidth - gap) * 0.46;
+                        final unitWidth =
+                            constraints.maxWidth - gap - priceWidth;
 
-                        return Wrap(
-                          spacing: 12,
-                          runSpacing: 12,
+                        return Row(
                           children: [
                             SizedBox(
-                              width: fieldWidth,
+                              width: priceWidth,
                               child: TextField(
                                 controller: _priceController,
                                 keyboardType: TextInputType.number,
@@ -283,8 +310,9 @@ class _ProductFormDialogState extends ConsumerState<ProductFormDialog> {
                                 ),
                               ),
                             ),
+                            SizedBox(width: gap),
                             SizedBox(
-                              width: fieldWidth,
+                              width: unitWidth,
                               child: Builder(
                                 builder: (context) {
                                   final scheme = Theme.of(context).colorScheme;
@@ -352,13 +380,9 @@ class _ProductFormDialogState extends ConsumerState<ProductFormDialog> {
                                             ),
                                           ),
                                         )
-                                      : Wrap(
-                                          spacing: 4,
-                                          crossAxisAlignment:
-                                              WrapCrossAlignment.center,
+                                      : Row(
                                           children: [
-                                            SizedBox(
-                                              width: fieldWidth - 36,
+                                            Expanded(
                                               child: TextField(
                                                 controller:
                                                     _customUnitController,
@@ -398,6 +422,13 @@ class _ProductFormDialogState extends ConsumerState<ProductFormDialog> {
                                               ),
                                             ),
                                             IconButton(
+                                              visualDensity:
+                                                  VisualDensity.compact,
+                                              padding: EdgeInsets.zero,
+                                              constraints: const BoxConstraints(
+                                                minWidth: 32,
+                                                minHeight: 32,
+                                              ),
                                               icon: const Icon(
                                                 Icons.close,
                                                 color: Colors.white54,
@@ -417,49 +448,87 @@ class _ProductFormDialogState extends ConsumerState<ProductFormDialog> {
                     ),
                     const SizedBox(height: 16),
                     if (!_isCustomCategory)
-                      DropdownButtonFormField<String>(
-                        dropdownColor: Colors.blueGrey[900],
-                        style: const TextStyle(color: Colors.white),
-                        initialValue: _selectedCategory,
-                        onChanged: (v) {
-                          if (v == 'ADD_NEW') {
-                            setState(() => _isCustomCategory = true);
-                            WidgetsBinding.instance.addPostFrameCallback((_) {
-                              _customCategoryFocus.requestFocus();
-                            });
-                          } else {
-                            setState(() => _selectedCategory = v!);
-                          }
-                        },
-                        items: [
-                          ...categories.map(
-                            (c) => DropdownMenuItem(value: c, child: Text(c)),
-                          ),
-                          const DropdownMenuItem(
-                            value: 'ADD_NEW',
-                            child: Text(
-                              '+ Other (Custom)...',
-                              style: TextStyle(
-                                color: Colors.blue,
-                                fontWeight: FontWeight.bold,
+                      Row(
+                        children: [
+                          Expanded(
+                            child: DropdownButtonFormField<String>(
+                              dropdownColor: Colors.blueGrey[900],
+                              style: const TextStyle(color: Colors.white),
+                              initialValue: _selectedCategory,
+                              isExpanded: true,
+                              onChanged: (v) {
+                                if (v == 'ADD_NEW') {
+                                  setState(() => _isCustomCategory = true);
+                                  WidgetsBinding.instance.addPostFrameCallback((
+                                    _,
+                                  ) {
+                                    _customCategoryFocus.requestFocus();
+                                  });
+                                } else {
+                                  setState(() => _selectedCategory = v!);
+                                }
+                              },
+                              items: [
+                                ...sortedCategories.map(
+                                  (c) => DropdownMenuItem(
+                                    value: c,
+                                    child: Text(
+                                      c,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                ),
+                                if (keepDeletedCategoryOnEdit)
+                                  DropdownMenuItem(
+                                    value: _selectedCategory,
+                                    child: Text(
+                                      _selectedCategory,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                const DropdownMenuItem(
+                                  value: 'ADD_NEW',
+                                  child: Text(
+                                    '+ Other (Custom)...',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      color: Colors.blue,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                              decoration: InputDecoration(
+                                labelText: 'Category',
+                                labelStyle: const TextStyle(
+                                  color: Colors.white70,
+                                ),
+                                enabledBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                  borderSide: BorderSide(
+                                    color: Colors.white.withOpacity(0.3),
+                                  ),
+                                ),
+                                focusedBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                  borderSide: const BorderSide(
+                                    color: Colors.white,
+                                  ),
+                                ),
                               ),
                             ),
                           ),
-                        ],
-                        decoration: InputDecoration(
-                          labelText: 'Category',
-                          labelStyle: const TextStyle(color: Colors.white70),
-                          enabledBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            borderSide: BorderSide(
-                              color: Colors.white.withOpacity(0.3),
+                          CategorySortButton(
+                            alphabetical: _categoriesAlphabetical,
+                            onPressed: () => setState(
+                              () => _categoriesAlphabetical =
+                                  !_categoriesAlphabetical,
                             ),
                           ),
-                          focusedBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            borderSide: const BorderSide(color: Colors.white),
-                          ),
-                        ),
+                        ],
                       )
                     else
                       Row(

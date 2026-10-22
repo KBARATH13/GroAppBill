@@ -115,14 +115,33 @@ class PrinterService {
   // Send bill to thermal printer via backend
   static Future<Map<String, dynamic>> sendBillToPrinter(Bill bill) async {
     try {
+      final prefs = await SharedPreferences.getInstance();
+      final configuredHost = prefs.getString('printer_host')?.trim();
+      if (configuredHost == null || configuredHost.isEmpty) {
+        return {
+          'success': false,
+          'message':
+              'Printer IP address is not configured. Set it in Settings > Printer Configuration.',
+        };
+      }
+      if (InternetAddress.tryParse(configuredHost) == null) {
+        return {
+          'success': false,
+          'message':
+              'The configured printer address "$configuredHost" is not a valid IP address. Update it in Settings > Printer Configuration.',
+        };
+      }
+
       final escposData = formatBillAsESCPOS(bill);
       final success = await sendDirectToPrinter(escposData);
       if (success) {
         return {'success': true, 'message': '✓ Bill sent to thermal printer!'};
       } else {
+        final config = await getConfig();
         return {
           'success': false,
-          'message': '✗ Error: Could not connect to printer.',
+          'message':
+              'Could not connect to printer at $configuredHost:${config['printerPort']}. Check that the printer is on, the IP address is current, and the phone and printer use the same Wi-Fi network.',
         };
       }
     } catch (e) {

@@ -1,5 +1,58 @@
 enum BottleType { normal, bisleri }
 
+enum WaterBottleCustomerFilter { all, bisleri, normal, both }
+
+extension WaterBottleCustomerFilterLabel on WaterBottleCustomerFilter {
+  String get label {
+    switch (this) {
+      case WaterBottleCustomerFilter.all:
+        return 'All';
+      case WaterBottleCustomerFilter.bisleri:
+        return 'Bisleri';
+      case WaterBottleCustomerFilter.normal:
+        return 'Normal';
+      case WaterBottleCustomerFilter.both:
+        return 'Both';
+    }
+  }
+
+  bool includes(WaterBottleRecord record) {
+    final hasBisleri = record.items.any(
+      (item) => item.bottleType == BottleType.bisleri,
+    );
+    final hasNormal = record.items.any(
+      (item) => item.bottleType == BottleType.normal,
+    );
+
+    switch (this) {
+      case WaterBottleCustomerFilter.all:
+        return true;
+      case WaterBottleCustomerFilter.bisleri:
+        return hasBisleri;
+      case WaterBottleCustomerFilter.normal:
+        return hasNormal;
+      case WaterBottleCustomerFilter.both:
+        return hasBisleri && hasNormal;
+    }
+  }
+
+  int bottleCount(Iterable<WaterBottleRecord> records) {
+    return records.where(includes).fold<int>(0, (total, record) {
+      final matchingQuantity = switch (this) {
+        WaterBottleCustomerFilter.all || WaterBottleCustomerFilter.both =>
+          record.totalBottles,
+        WaterBottleCustomerFilter.bisleri => record.items
+            .where((item) => item.bottleType == BottleType.bisleri)
+            .fold<int>(0, (sum, item) => sum + item.quantity),
+        WaterBottleCustomerFilter.normal => record.items
+            .where((item) => item.bottleType == BottleType.normal)
+            .fold<int>(0, (sum, item) => sum + item.quantity),
+      };
+      return total + matchingQuantity;
+    });
+  }
+}
+
 extension BottleTypeLabel on BottleType {
   String get label {
     switch (this) {

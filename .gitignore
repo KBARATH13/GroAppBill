@@ -59,3 +59,10 @@ android/app/key.properties
 # Generated plugin files
 .flutter-plugins
 .flutter-plugins-dependencies
+
+#unwanted folders
+ios
+macos
+linux
+web
+windows

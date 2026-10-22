@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/index.dart';
 import '../providers/app_providers.dart';
 import '../widgets/product_form_dialog.dart';
+import '../widgets/category_sort_button.dart';
 import '../services/sync_service.dart';
 import '../widgets/glass_container.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
@@ -30,6 +31,7 @@ class _AdminScreenState extends ConsumerState<AdminScreen> {
   String _searchQuery = '';
   String _filterCategory = 'All';
   String _sortBy = 'Name (A-Z)';
+  bool _categoriesAlphabetical = false;
   late TextEditingController _searchController;
   bool _isProcessingScan = false;
   bool _isPublishing = false;
@@ -352,6 +354,47 @@ class _AdminScreenState extends ConsumerState<AdminScreen> {
     );
   }
 
+  Future<void> _confirmDeleteCategory(String category) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Delete Category'),
+        content: Text(
+          'Delete "$category"? Products in this category will remain in your inventory and will not be moved to another category.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Delete Category'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+
+    try {
+      await ref.read(categoriesProvider.notifier).deleteCategory(category);
+      if (!mounted) return;
+      if (normalizeCategoryName(_filterCategory) ==
+          normalizeCategoryName(category)) {
+        setState(() => _filterCategory = 'All');
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('"$category" deleted; its products were kept')),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not delete category: $error')),
+      );
+    }
+  }
+
   void _showProductOptions(Product product) {
     showModalBottomSheet(
       context: context,
@@ -413,21 +456,38 @@ class _AdminScreenState extends ConsumerState<AdminScreen> {
   @override
   Widget build(BuildContext context) {
     final products = ref.watch(productsProvider);
+    final productCounts = categoryProductCounts(products);
     final categories = ref.watch(categoriesProvider);
+    final shopInfo = ref.watch(shopInfoProvider);
+    final canDeleteCategories =
+        ref.watch(appUserProvider).valueOrNull?.isAdmin == true;
     final scheme = Theme.of(context).colorScheme;
-    final sortedCategories = sortCategoriesForDisplay(categories, products);
+    final sortedCategories = sortCategoriesForDisplay(
+      categories,
+      products,
+      alphabetical: _categoriesAlphabetical,
+      excludedCategories: shopInfo.deletedCategories,
+    );
 
     final dashboardCategories = <String>['All'];
     for (final category in sortedCategories) {
       if (category != 'All') dashboardCategories.add(category);
     }
+    final filterCategory = dashboardCategories.firstWhere(
+      (category) =>
+          normalizeCategoryName(category) ==
+          normalizeCategoryName(_filterCategory),
+      orElse: () => 'All',
+    );
 
     final filteredProducts = products.where((product) {
       final matchesSearch = product.name.toLowerCase().contains(
         _searchQuery.toLowerCase(),
       );
       final matchesCategory =
-          _filterCategory == 'All' || product.category == _filterCategory;
+          filterCategory == 'All' ||
+          normalizeCategoryName(product.category) ==
+              normalizeCategoryName(filterCategory);
       return matchesSearch && matchesCategory;
     }).toList();
 
@@ -615,9 +675,9 @@ class _AdminScreenState extends ConsumerState<AdminScreen> {
                       fontWeight: FontWeight.bold,
                     ),
                   ),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 6),
                   SizedBox(
-                    height: 94,
+                    height: 60,
                     child: ListView.builder(
                       scrollDirection: Axis.horizontal,
                       itemCount: dashboardCategories.length,
@@ -625,62 +685,88 @@ class _AdminScreenState extends ConsumerState<AdminScreen> {
                         final category = dashboardCategories[index];
                         final count = category == 'All'
                             ? products.length
-                            : products
-                                  .where(
-                                    (product) => product.category == category,
-                                  )
-                                  .length;
-                        final isSelected = _filterCategory == category;
+                            : productCounts[normalizeCategoryName(category)] ??
+                                  0;
+                        final isSelected = filterCategory == category;
 
                         return Padding(
                           padding: const EdgeInsets.only(right: 10.0),
-                          child: GestureDetector(
-                            onTap: () =>
-                                setState(() => _filterCategory = category),
-                            child: GlassContainer(
-                              color: isSelected
-                                  ? scheme.primary.withOpacity(0.45)
-                                  : Colors.white.withOpacity(0.12),
-                              borderRadius: 16,
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 16,
-                                vertical: 10,
-                              ),
-                              child: SizedBox(
-                                width: 112,
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  mainAxisAlignment:
-                                      MainAxisAlignment.spaceBetween,
-                                  children: [
-                                    Text(
-                                      category,
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: const TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                        color: Colors.white,
-                                        fontSize: 12,
-                                      ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              GestureDetector(
+                                onTap: () =>
+                                    setState(() => _filterCategory = category),
+                                onLongPress:
+                                    canDeleteCategories &&
+                                        category != 'All' &&
+                                        !CategoriesNotifier.defaultCategories
+                                            .any(
+                                              (defaultCategory) =>
+                                                  normalizeCategoryName(
+                                                    defaultCategory,
+                                                  ) ==
+                                                  normalizeCategoryName(
+                                                    category,
+                                                  ),
+                                            )
+                                    ? () => _confirmDeleteCategory(category)
+                                    : null,
+                                child: GlassContainer(
+                                  color: isSelected
+                                      ? scheme.primary.withOpacity(0.45)
+                                      : Colors.white.withOpacity(0.12),
+                                  borderRadius: 16,
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 10,
+                                    vertical: 4,
+                                  ),
+                                  child: SizedBox(
+                                    width: 76,
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.spaceBetween,
+                                      children: [
+                                        Text(
+                                          category,
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: const TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                            color: Colors.white,
+                                            fontSize: 11,
+                                          ),
+                                        ),
+                                        Text(
+                                          '$count',
+                                          style: const TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 18,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                      ],
                                     ),
-                                    Text(
-                                      '$count',
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 26,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                                  ],
+                                  ),
                                 ),
                               ),
-                            ),
+                              if (category == 'All')
+                                CategorySortButton(
+                                  alphabetical: _categoriesAlphabetical,
+                                  onPressed: () => setState(
+                                    () => _categoriesAlphabetical =
+                                        !_categoriesAlphabetical,
+                                  ),
+                                ),
+                            ],
                           ),
                         );
                       },
                     ),
                   ),
-                  const SizedBox(height: 14),
+                  const SizedBox(height: 10),
                 ],
 
                 const SizedBox(height: 6),
@@ -773,6 +859,11 @@ class _AdminScreenState extends ConsumerState<AdminScreen> {
             sliver: SliverList(
               delegate: SliverChildBuilderDelegate((context, index) {
                 final product = filteredProducts[index];
+                final hasDeletedCategory = shopInfo.deletedCategories.any(
+                  (category) =>
+                      normalizeCategoryName(category) ==
+                      normalizeCategoryName(product.category),
+                );
                 return Container(
                   margin: const EdgeInsets.only(bottom: 12),
                   child: GlassContainer(
@@ -801,12 +892,32 @@ class _AdminScreenState extends ConsumerState<AdminScreen> {
                                     ),
                                   ),
                                   const SizedBox(height: 4),
-                                  Text(
-                                    '${product.category} • ${product.unit}',
-                                    style: const TextStyle(
-                                      color: Colors.white60,
-                                      fontSize: 12,
-                                    ),
+                                  Row(
+                                    children: [
+                                      if (hasDeletedCategory) ...[
+                                        const Tooltip(
+                                          message:
+                                              'This category was deleted. The product was kept.',
+                                          child: Icon(
+                                            Icons.warning_amber_rounded,
+                                            color: Colors.amber,
+                                            size: 16,
+                                          ),
+                                        ),
+                                        const SizedBox(width: 4),
+                                      ],
+                                      Expanded(
+                                        child: Text(
+                                          '${product.category} • ${product.unit}',
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: const TextStyle(
+                                            color: Colors.white60,
+                                            fontSize: 12,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 ],
                               ),

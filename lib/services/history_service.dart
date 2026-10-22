@@ -33,7 +33,7 @@ class HistoryService {
 
     final docId =
         replaceFirestoreId ??
-        '${bill.billNumber}_${bill.operatorName.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '_')}_${createdAtMs}';
+        '${bill.billNumber}_${bill.operatorName.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '_')}_$createdAtMs';
 
     final newRecord = BillingHistoryRecord(
       billNumber: bill.billNumber,
@@ -102,7 +102,7 @@ class HistoryService {
         replaceBillId ?? 'B-${await getDailyBillCount(operatorName)}';
     final docId =
         replaceFirestoreId ??
-        '${newBillNumber}_${operatorName.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '_')}_${createdAtMs}';
+        '${newBillNumber}_${operatorName.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '_')}_$createdAtMs';
 
     final newRecord = BillingHistoryRecord(
       billNumber: newBillNumber,

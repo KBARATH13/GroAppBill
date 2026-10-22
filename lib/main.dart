@@ -27,6 +27,12 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp();
 
+  try {
+    await FirebaseAuth.instance.setPersistence(Persistence.LOCAL);
+  } catch (e) {
+    // Ignore errors on platforms where this is not supported or already default
+  }
+
   FirebaseFirestore.instance.settings = const Settings(
     persistenceEnabled: true,
     cacheSizeBytes: Settings.CACHE_SIZE_UNLIMITED,
@@ -166,6 +172,8 @@ class _PendingApprovalScreen extends ConsumerWidget {
                   const SizedBox(height: 40),
                   FilledButton.icon(
                     onPressed: () async {
+                      ref.read(userProvider.notifier).logout();
+                      ref.read(cartProvider.notifier).clearAllCarts();
                       await AuthService.signOut();
                     },
                     icon: const Icon(Icons.logout_rounded),

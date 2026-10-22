@@ -4,6 +4,7 @@ import 'package:share_plus/share_plus.dart';
 import '../models/index.dart';
 import '../providers/app_providers.dart';
 import '../providers/billing_controller.dart';
+import '../utils/bill_share_formatter.dart';
 import '../widgets/bill_preview_dialog.dart';
 import '../widgets/numpad_input_sheet.dart';
 import '../widgets/glass_container.dart';
@@ -499,6 +500,35 @@ class _CartScreenState extends ConsumerState<CartScreen> {
     );
 
     if (result['success'] == true) {
+      if (result['printSucceeded'] == false) {
+        if (mounted) {
+          setState(() {
+            _printerMessage = '';
+            _isPrinting = false;
+          });
+          await showDialog<void>(
+            context: context,
+            builder: (dialogContext) => AlertDialog(
+              title: const Text('Bill saved, but printing failed'),
+              content: Text(
+                result['message'] as String? ??
+                    'The printer is not configured or cannot be reached. The bill was saved to local history.',
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(dialogContext),
+                  child: const Text('OK'),
+                ),
+              ],
+            ),
+          );
+          if (!mounted) return;
+          if (Navigator.canPop(context)) Navigator.pop(context);
+          _offerShareReceipt(result['bill'] as Bill);
+        }
+        return;
+      }
+
       if (mounted) {
         setState(() => _printerMessage = '✓ Bill printed!');
         if (Navigator.canPop(context)) Navigator.pop(context);
@@ -537,16 +567,18 @@ class _CartScreenState extends ConsumerState<CartScreen> {
     buffer.writeln('Date  : ${bill.date} ${bill.time}');
     buffer.writeln('Operator: ${bill.operatorName}');
     buffer.writeln('--------------------------------');
-    buffer.writeln('*ITEMS*          *QTY*     *TOTAL*');
+    buffer.writeln('*ITEM*          *PRICE*     *QTY*     *TOTAL*');
 
     for (final item in bill.cartItems) {
-      final nameStr = item.product.name;
-      final name = nameStr.length > 14
-          ? nameStr.substring(0, 14)
-          : nameStr.padRight(14);
-      final qty = '${item.quantity}${item.product.unit}'.padRight(8);
-      final total = '₹${item.total.toStringAsFixed(2)}';
-      buffer.writeln('$name $qty $total');
+      buffer.writeln(
+        formatBillShareItemLine(
+          name: item.product.name,
+          price: item.product.price,
+          quantity: item.quantity.toString(),
+          unit: item.product.unit,
+          total: item.total,
+        ),
+      );
     }
 
     buffer.writeln('--------------------------------');
@@ -624,10 +656,14 @@ class _CartScreenState extends ConsumerState<CartScreen> {
             // ── Header ──
             Padding(
               padding: const EdgeInsets.all(24.0),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              child: Wrap(
+                alignment: WrapAlignment.spaceBetween,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                spacing: 12,
+                runSpacing: 12,
                 children: [
                   Row(
+                    mainAxisSize: MainAxisSize.min,
                     children: [
                       const Text(
                         'Cart',
@@ -663,6 +699,7 @@ class _CartScreenState extends ConsumerState<CartScreen> {
                     ],
                   ),
                   Row(
+                    mainAxisSize: MainAxisSize.min,
                     children: [
                       if (showMergeButton)
                         Padding(
@@ -810,6 +847,7 @@ class _CartScreenState extends ConsumerState<CartScreen> {
                           ),
                           borderRadius: 12,
                           child: const Row(
+                            mainAxisSize: MainAxisSize.min,
                             children: [
                               Icon(
                                 Icons.receipt_long,
@@ -866,49 +904,55 @@ class _CartScreenState extends ConsumerState<CartScreen> {
                           padding: const EdgeInsets.only(bottom: 12.0),
                           child: GlassContainer(
                             borderRadius: 16,
-                            padding: const EdgeInsets.all(12),
-                            child: Row(
+                            padding: const EdgeInsets.all(14),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Container(
-                                  width: 48,
-                                  height: 48,
-                                  decoration: BoxDecoration(
-                                    color: Colors.white.withOpacity(0.1),
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                  child: const Icon(
-                                    Icons.shopping_bag_outlined,
-                                    color: Colors.white70,
-                                  ),
-                                ),
-                                const SizedBox(width: 16),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        item.product.name,
-                                        style: const TextStyle(
-                                          color: Colors.white,
-                                          fontWeight: FontWeight.bold,
-                                          fontSize: 16,
-                                        ),
-                                      ),
-                                      const SizedBox(height: 4),
-                                      Text(
-                                        '₹${item.product.price.toStringAsFixed(2)} per ${item.product.unit}',
-                                        style: const TextStyle(
-                                          color: Colors.white54,
-                                          fontSize: 12,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                Column(
-                                  crossAxisAlignment: CrossAxisAlignment.end,
+                                // Top row: Product Icon + Product Name & Unit Price + Total Price
+                                Row(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
+                                    Container(
+                                      width: 42,
+                                      height: 42,
+                                      decoration: BoxDecoration(
+                                        color: Colors.white.withOpacity(0.1),
+                                        borderRadius: BorderRadius.circular(10),
+                                      ),
+                                      child: const Icon(
+                                        Icons.shopping_bag_outlined,
+                                        color: Colors.white70,
+                                        size: 20,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            item.product.name,
+                                            style: const TextStyle(
+                                              color: Colors.white,
+                                              fontWeight: FontWeight.bold,
+                                              fontSize: 16,
+                                            ),
+                                            maxLines: 2,
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                          const SizedBox(height: 4),
+                                          Text(
+                                            '₹${item.product.price.toStringAsFixed(2)} per ${item.product.unit}',
+                                            style: const TextStyle(
+                                              color: Colors.white54,
+                                              fontSize: 12,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    const SizedBox(width: 12),
                                     Text(
                                       '₹${item.total.toStringAsFixed(2)}',
                                       style: const TextStyle(
@@ -917,63 +961,108 @@ class _CartScreenState extends ConsumerState<CartScreen> {
                                         fontSize: 18,
                                       ),
                                     ),
-                                    const SizedBox(height: 8),
-                                    Wrap(
-                                      alignment: WrapAlignment.end,
-                                      crossAxisAlignment:
-                                          WrapCrossAlignment.center,
-                                      spacing: 8,
-                                      runSpacing: 8,
-                                      children: [
-                                        _IconButton(
-                                          icon: Icons.currency_rupee,
+                                  ],
+                                ),
+                                const SizedBox(height: 12),
+                                const Divider(color: Colors.white12, height: 1),
+                                const SizedBox(height: 10),
+
+                                // Bottom controls row: Unit Price Edit | Quantity Controls | Delete
+                                Row(
+                                  mainAxisAlignment:
+                                      MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    // Edit Price button
+                                    GestureDetector(
+                                      onTap: () => _showEditPriceDialog(
+                                        item,
+                                        index,
+                                        cartNotifier,
+                                        isAdmin,
+                                      ),
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 10,
+                                          vertical: 6,
+                                        ),
+                                        decoration: BoxDecoration(
                                           color: Colors.green.withOpacity(0.15),
-                                          iconColor: Colors.greenAccent,
-                                          onTap: () => _showEditPriceDialog(
-                                            item,
-                                            index,
-                                            cartNotifier,
-                                            isAdmin,
+                                          borderRadius:
+                                              BorderRadius.circular(8),
+                                          border: Border.all(
+                                            color: Colors.greenAccent
+                                                .withOpacity(0.3),
                                           ),
                                         ),
-                                        if (item.product.unit == 'pc')
-                                          Wrap(
-                                            spacing: 12,
-                                            crossAxisAlignment:
-                                                WrapCrossAlignment.center,
-                                            children: [
-                                              _IconButton(
-                                                icon: Icons.remove,
-                                                isDisabled: item.quantity <= 1,
-                                                onTap: item.quantity <= 1
-                                                    ? () {}
-                                                    : () => cartNotifier
-                                                          .updateItemQuantity(
-                                                            index,
-                                                            item.quantity - 1,
-                                                          ),
+                                        child: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            const Icon(
+                                              Icons.currency_rupee,
+                                              size: 14,
+                                              color: Colors.greenAccent,
+                                            ),
+                                            const SizedBox(width: 2),
+                                            Text(
+                                              item.product.price
+                                                  .toStringAsFixed(2),
+                                              style: const TextStyle(
+                                                color: Colors.greenAccent,
+                                                fontSize: 12,
+                                                fontWeight: FontWeight.bold,
                                               ),
-                                              Text(
-                                                item.quantity.toStringAsFixed(
-                                                  0,
+                                            ),
+                                            const SizedBox(width: 4),
+                                            const Icon(
+                                              Icons.edit,
+                                              size: 12,
+                                              color: Colors.greenAccent,
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+
+                                    // Quantity / Weight and Delete controls
+                                    Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        if (item.product.unit == 'pc') ...[
+                                          _IconButton(
+                                            icon: Icons.remove,
+                                            isDisabled: item.quantity <= 1,
+                                            compact: true,
+                                            onTap: item.quantity <= 1
+                                                ? () {}
+                                                : () => cartNotifier
+                                                      .updateItemQuantity(
+                                                        index,
+                                                        item.quantity - 1,
+                                                      ),
+                                          ),
+                                          Padding(
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 8,
+                                            ),
+                                            child: Text(
+                                              item.quantity.toStringAsFixed(0),
+                                              style: const TextStyle(
+                                                color: Colors.orangeAccent,
+                                                fontWeight: FontWeight.bold,
+                                                fontSize: 16,
+                                              ),
+                                            ),
+                                          ),
+                                          _IconButton(
+                                            icon: Icons.add,
+                                            compact: true,
+                                            onTap: () => cartNotifier
+                                                .updateItemQuantity(
+                                                  index,
+                                                  item.quantity + 1,
                                                 ),
-                                                style: const TextStyle(
-                                                  color: Colors.orangeAccent,
-                                                  fontWeight: FontWeight.bold,
-                                                  fontSize: 16,
-                                                ),
-                                              ),
-                                              _IconButton(
-                                                icon: Icons.add,
-                                                onTap: () => cartNotifier
-                                                    .updateItemQuantity(
-                                                      index,
-                                                      item.quantity + 1,
-                                                    ),
-                                              ),
-                                            ],
-                                          )
-                                        else
+                                          ),
+                                        ] else ...[
                                           GestureDetector(
                                             onTap: () => _showEditWeightDialog(
                                               item,
@@ -985,11 +1074,11 @@ class _CartScreenState extends ConsumerState<CartScreen> {
                                               padding:
                                                   const EdgeInsets.symmetric(
                                                     horizontal: 10,
-                                                    vertical: 4,
+                                                    vertical: 6,
                                                   ),
                                               decoration: BoxDecoration(
                                                 color: Colors.blue.withOpacity(
-                                                  0.1,
+                                                  0.15,
                                                 ),
                                                 borderRadius:
                                                     BorderRadius.circular(8),
@@ -1008,12 +1097,15 @@ class _CartScreenState extends ConsumerState<CartScreen> {
                                               ),
                                             ),
                                           ),
+                                        ],
+                                        const SizedBox(width: 8),
                                         _IconButton(
                                           icon: Icons.delete_outline,
                                           color: Colors.redAccent.withOpacity(
                                             0.2,
                                           ),
                                           iconColor: Colors.redAccent,
+                                          compact: true,
                                           onTap: () {
                                             cartNotifier.removeItem(index);
                                             ScaffoldMessenger.of(
@@ -1272,6 +1364,7 @@ class _IconButton extends StatelessWidget {
   final Color? color;
   final Color? iconColor;
   final bool isDisabled;
+  final bool compact;
 
   const _IconButton({
     required this.icon,
@@ -1279,6 +1372,7 @@ class _IconButton extends StatelessWidget {
     this.color,
     this.iconColor,
     this.isDisabled = false,
+    this.compact = false,
   });
 
   @override
@@ -1286,7 +1380,7 @@ class _IconButton extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.all(11),
+        padding: EdgeInsets.all(compact ? 7 : 11),
         decoration: BoxDecoration(
           color: isDisabled
               ? Colors.white.withOpacity(0.04)
@@ -1296,7 +1390,7 @@ class _IconButton extends StatelessWidget {
         child: Icon(
           icon,
           color: isDisabled ? Colors.white24 : (iconColor ?? Colors.white70),
-          size: 22,
+          size: compact ? 18 : 22,
         ),
       ),
     );

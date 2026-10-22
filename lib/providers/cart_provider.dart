@@ -177,6 +177,12 @@ class CartNotifier extends StateNotifier<CartState> {
     _saveCart();
   }
 
+  Future<void> clearAllCarts() async {
+    state = CartState(activeIndex: 0, carts: [[], [], []]);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('grocery-carts');
+  }
+
   Future<void> _saveCart() async {
     final prefs = await SharedPreferences.getInstance();
     final cartJson = jsonEncode({

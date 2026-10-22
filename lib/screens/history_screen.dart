@@ -7,6 +7,7 @@ import '../services/history_service.dart';
 import '../services/auth_service.dart';
 import '../services/printer_service.dart';
 import '../providers/app_providers.dart';
+import '../utils/bill_share_formatter.dart';
 import '../widgets/glass_container.dart';
 import '../widgets/vibrant_background.dart';
 import 'package:share_plus/share_plus.dart';
@@ -197,8 +198,9 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                 final dayBills = mergedHistory[key] ?? [];
                 for (final b in dayBills) {
                   allOperators.add(b.operatorName);
-                  if (b.originalOperator != null)
+                  if (b.originalOperator != null) {
                     allOperators.add(b.originalOperator!);
+                  }
                 }
               }
               final operatorList = allOperators.toList()..sort();
@@ -234,10 +236,12 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                 final bMins = _timeStrToMinutes(b.time);
                 if (aMins != bMins) return bMins.compareTo(aMins);
                 int aId = 0, bId = 0;
-                if (a.billNumber.startsWith('B-'))
+                if (a.billNumber.startsWith('B-')) {
                   aId = int.tryParse(a.billNumber.substring(2)) ?? 0;
-                if (b.billNumber.startsWith('B-'))
+                }
+                if (b.billNumber.startsWith('B-')) {
                   bId = int.tryParse(b.billNumber.substring(2)) ?? 0;
+                }
                 return bId.compareTo(aId);
               });
 
@@ -254,42 +258,34 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                 children: [
                   if (pendingBills.isNotEmpty)
                     Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
                       child: GlassContainer(
-                        padding: const EdgeInsets.all(14),
-                        borderRadius: 18,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 4,
+                        ),
+                        borderRadius: 12,
                         child: Row(
                           children: [
                             const Icon(
-                              Icons.cloud_upload_outlined,
+                              Icons.warning_amber_rounded,
                               color: Colors.orangeAccent,
+                              size: 19,
                             ),
-                            const SizedBox(width: 12),
+                            const SizedBox(width: 7),
                             Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    '${pendingBills.length} pending upload${pendingBills.length == 1 ? '' : 's'}',
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 2),
-                                  Text(
-                                    'Bills saved locally and waiting for connectivity',
-                                    style: const TextStyle(
-                                      color: Colors.white70,
-                                      fontSize: 12,
-                                    ),
-                                  ),
-                                ],
+                              child: Text(
+                                '${pendingBills.length} bill${pendingBills.length == 1 ? '' : 's'} pending upload',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 13,
+                                ),
                               ),
                             ),
                             if (appUser != null &&
                                 appUser.adminEmail.isNotEmpty)
-                              TextButton.icon(
+                              IconButton(
                                 onPressed: () async {
                                   setState(() {});
                                   await HistoryService.syncPendingBills(
@@ -298,7 +294,13 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                                   if (mounted) setState(() {});
                                 },
                                 icon: const Icon(Icons.sync, size: 18),
-                                label: const Text('Sync Now'),
+                                tooltip: 'Sync pending bills now',
+                                visualDensity: VisualDensity.compact,
+                                constraints: const BoxConstraints.tightFor(
+                                  width: 36,
+                                  height: 36,
+                                ),
+                                padding: EdgeInsets.zero,
                               ),
                           ],
                         ),
@@ -315,8 +317,9 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                         // ==== Operator Tally Section ====
                         Autocomplete<String>(
                           optionsBuilder: (TextEditingValue textEditingValue) {
-                            if (textEditingValue.text.isEmpty)
+                            if (textEditingValue.text.isEmpty) {
                               return const Iterable<String>.empty();
+                            }
                             return operatorList.where((String option) {
                               return option.toLowerCase().contains(
                                 textEditingValue.text.toLowerCase(),
@@ -377,125 +380,125 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                               },
                         ),
                         const SizedBox(height: 12),
-                        LayoutBuilder(
-                          builder: (context, constraints) {
-                            final isCompact = constraints.maxWidth < 420;
-                            final fieldWidth = isCompact
-                                ? constraints.maxWidth
-                                : constraints.maxWidth * 0.4;
-                            final searchWidth = isCompact
-                                ? constraints.maxWidth
-                                : constraints.maxWidth * 0.58;
-
-                            return Wrap(
-                              spacing: 8,
-                              runSpacing: 8,
-                              children: [
-                                SizedBox(
-                                  width: fieldWidth,
-                                  child: DropdownButtonFormField<String>(
-                                    value: _selectedDateKey,
-                                    dropdownColor: const Color(0xFF1A1A1A),
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 13,
+                        Row(
+                          children: [
+                            Expanded(
+                              flex: 2,
+                              child: DropdownButtonFormField<String>(
+                                initialValue: _selectedDateKey,
+                                dropdownColor: const Color(0xFF1A1A1A),
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 13,
+                                ),
+                                isExpanded: true,
+                                isDense: true,
+                                decoration: InputDecoration(
+                                  labelText: 'Day',
+                                  labelStyle: const TextStyle(
+                                    color: Colors.white70,
+                                    fontSize: 12,
+                                  ),
+                                  border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  filled: true,
+                                  fillColor: Colors.white.withOpacity(0.05),
+                                  contentPadding: const EdgeInsets.symmetric(
+                                    horizontal: 12,
+                                    vertical: 8,
+                                  ),
+                                ),
+                                items: _windowKeys.map((key) {
+                                  return DropdownMenuItem(
+                                    value: key,
+                                    child: Text(
+                                      _labelFor(key).split('  ')[0],
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
                                     ),
-                                    decoration: InputDecoration(
-                                      labelText: 'Day',
-                                      labelStyle: const TextStyle(
-                                        color: Colors.white70,
-                                        fontSize: 12,
-                                      ),
-                                      border: OutlineInputBorder(
-                                        borderRadius: BorderRadius.circular(12),
-                                      ),
-                                      filled: true,
-                                      fillColor: Colors.white.withOpacity(0.05),
-                                      contentPadding:
-                                          const EdgeInsets.symmetric(
-                                            horizontal: 12,
-                                            vertical: 8,
+                                  );
+                                }).toList(),
+                                onChanged: (v) => v != null
+                                    ? setState(() => _selectedDateKey = v)
+                                    : null,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              flex: 3,
+                              child: TextField(
+                                key: _searchBarKey,
+                                controller: _searchController,
+                                keyboardType: TextInputType.number,
+                                style: const TextStyle(color: Colors.white),
+                                onChanged: (value) {
+                                  setState(() {});
+                                },
+                                decoration: InputDecoration(
+                                  hintText: 'Bill # / Price',
+                                  hintStyle: const TextStyle(
+                                    color: Colors.white38,
+                                    fontSize: 13,
+                                  ),
+                                  prefixIcon: const Icon(
+                                    Icons.search,
+                                    color: Colors.white70,
+                                    size: 18,
+                                  ),
+                                  suffixIcon: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      if (_searchController.text.isNotEmpty)
+                                        IconButton(
+                                          visualDensity: VisualDensity.compact,
+                                          padding: EdgeInsets.zero,
+                                          constraints: const BoxConstraints(
+                                            minWidth: 32,
+                                            minHeight: 32,
                                           ),
-                                    ),
-                                    items: _windowKeys.map((key) {
-                                      return DropdownMenuItem(
-                                        value: key,
-                                        child: Text(
-                                          _labelFor(key).split('  ')[0],
-                                          overflow: TextOverflow.ellipsis,
+                                          icon: const Icon(
+                                            Icons.clear,
+                                            size: 16,
+                                          ),
+                                          onPressed: () {
+                                            _searchController.clear();
+                                            setState(() {});
+                                          },
                                         ),
-                                      );
-                                    }).toList(),
-                                    onChanged: (v) => v != null
-                                        ? setState(() => _selectedDateKey = v)
-                                        : null,
+                                      IconButton(
+                                        visualDensity: VisualDensity.compact,
+                                        padding: EdgeInsets.zero,
+                                        constraints: const BoxConstraints(
+                                          minWidth: 32,
+                                          minHeight: 32,
+                                        ),
+                                        icon: Icon(
+                                          Icons.access_time,
+                                          color:
+                                              (_startTime != null ||
+                                                  _endTime != null)
+                                              ? Colors.orange
+                                              : Colors.white70,
+                                          size: 18,
+                                        ),
+                                        onPressed: _selectTimeRange,
+                                      ),
+                                    ],
+                                  ),
+                                  filled: true,
+                                  fillColor: Colors.white.withOpacity(0.05),
+                                  border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  contentPadding: const EdgeInsets.symmetric(
+                                    horizontal: 12,
+                                    vertical: 8,
                                   ),
                                 ),
-                                SizedBox(
-                                  width: searchWidth,
-                                  child: TextField(
-                                    key: _searchBarKey,
-                                    controller: _searchController,
-                                    keyboardType: TextInputType.number,
-                                    style: const TextStyle(color: Colors.white),
-                                    onChanged: (value) {
-                                      setState(() {});
-                                    },
-                                    decoration: InputDecoration(
-                                      hintText: 'Bill # / Price',
-                                      hintStyle: const TextStyle(
-                                        color: Colors.white38,
-                                        fontSize: 13,
-                                      ),
-                                      prefixIcon: const Icon(
-                                        Icons.search,
-                                        color: Colors.white70,
-                                        size: 18,
-                                      ),
-                                      suffixIcon: Row(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          if (_searchController.text.isNotEmpty)
-                                            IconButton(
-                                              icon: const Icon(
-                                                Icons.clear,
-                                                size: 16,
-                                              ),
-                                              onPressed: () {
-                                                _searchController.clear();
-                                                setState(() {});
-                                              },
-                                            ),
-                                          IconButton(
-                                            icon: Icon(
-                                              Icons.access_time,
-                                              color:
-                                                  (_startTime != null ||
-                                                      _endTime != null)
-                                                  ? Colors.orange
-                                                  : Colors.white70,
-                                              size: 18,
-                                            ),
-                                            onPressed: _selectTimeRange,
-                                          ),
-                                        ],
-                                      ),
-                                      filled: true,
-                                      fillColor: Colors.white.withOpacity(0.05),
-                                      border: OutlineInputBorder(
-                                        borderRadius: BorderRadius.circular(12),
-                                      ),
-                                      contentPadding:
-                                          const EdgeInsets.symmetric(
-                                            horizontal: 12,
-                                            vertical: 8,
-                                          ),
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            );
-                          },
+                              ),
+                            ),
+                          ],
                         ),
                         if (_startTime != null && _endTime != null)
                           Padding(
@@ -1370,16 +1373,18 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
     buffer.writeln('Date  : ${bill.date} ${bill.time}');
     buffer.writeln('Operator: ${bill.operatorName}');
     buffer.writeln('--------------------------------');
-    buffer.writeln('*ITEMS*          *QTY*     *TOTAL*');
+    buffer.writeln('*ITEM*          *PRICE*     *QTY*     *TOTAL*');
 
     for (final item in bill.itemsJson) {
-      final nameStr = (item['name'] as String? ?? 'Item');
-      final name = nameStr.length > 14
-          ? nameStr.substring(0, 14)
-          : nameStr.padRight(14);
-      final qty = '${item['weight']}${item['unit']}'.padRight(8);
-      final total = '₹${item['total']}';
-      buffer.writeln('$name $qty $total');
+      buffer.writeln(
+        formatBillShareItemLine(
+          name: item['name'] as String? ?? 'Item',
+          price: (item['price'] as num?)?.toDouble() ?? 0,
+          quantity: item['weight']?.toString() ?? '',
+          unit: item['unit'] as String? ?? '',
+          total: (item['total'] as num?)?.toDouble() ?? 0,
+        ),
+      );
     }
 
     buffer.writeln('--------------------------------');

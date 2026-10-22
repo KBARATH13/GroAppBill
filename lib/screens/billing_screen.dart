@@ -7,6 +7,7 @@ import '../widgets/product_form_dialog.dart';
 import '../widgets/glass_container.dart';
 import '../widgets/cart_selection_tabs.dart';
 import '../widgets/address_info_card.dart';
+import '../widgets/category_sort_button.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/rendering.dart';
@@ -22,6 +23,7 @@ class _BillingScreenState extends ConsumerState<BillingScreen> {
   String _searchTerm = '';
   String _selectedCategory = 'All';
   String _sortBy = 'Name (A-Z)';
+  bool _categoriesAlphabetical = false;
   late TextEditingController _searchController;
   late TextEditingController _quantityController;
   late TextEditingController _operatorController;
@@ -363,21 +365,36 @@ class _BillingScreenState extends ConsumerState<BillingScreen> {
   @override
   Widget build(BuildContext context) {
     final products = ref.watch(productsProvider);
+    final productCounts = categoryProductCounts(products);
     final categories = ref.watch(categoriesProvider);
+    final shopInfo = ref.watch(shopInfoProvider);
     final scheme = Theme.of(context).colorScheme;
-    final sortedCategories = sortCategoriesForDisplay(categories, products);
+    final sortedCategories = sortCategoriesForDisplay(
+      categories,
+      products,
+      alphabetical: _categoriesAlphabetical,
+      excludedCategories: shopInfo.deletedCategories,
+    );
 
     final dashboardCategories = <String>['All'];
     for (final category in sortedCategories) {
       if (category != 'All') dashboardCategories.add(category);
     }
+    final selectedCategory = dashboardCategories.firstWhere(
+      (category) =>
+          normalizeCategoryName(category) ==
+          normalizeCategoryName(_selectedCategory),
+      orElse: () => 'All',
+    );
 
     final filteredProducts = products.where((p) {
       final matchesSearch =
           p.name.toLowerCase().contains(_searchTerm.toLowerCase()) ||
           p.category.toLowerCase().contains(_searchTerm.toLowerCase());
       final matchesCategory =
-          _selectedCategory == 'All' || p.category == _selectedCategory;
+          selectedCategory == 'All' ||
+          normalizeCategoryName(p.category) ==
+              normalizeCategoryName(selectedCategory);
       return matchesSearch && matchesCategory;
     }).toList();
 
@@ -597,9 +614,9 @@ class _BillingScreenState extends ConsumerState<BillingScreen> {
                       fontWeight: FontWeight.bold,
                     ),
                   ),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 6),
                   SizedBox(
-                    height: 94,
+                    height: 60,
                     child: ListView.builder(
                       scrollDirection: Axis.horizontal,
                       itemCount: dashboardCategories.length,
@@ -607,62 +624,74 @@ class _BillingScreenState extends ConsumerState<BillingScreen> {
                         final category = dashboardCategories[index];
                         final count = category == 'All'
                             ? products.length
-                            : products
-                                  .where(
-                                    (product) => product.category == category,
-                                  )
-                                  .length;
-                        final isSelected = _selectedCategory == category;
+                            : productCounts[normalizeCategoryName(category)] ??
+                                  0;
+                        final isSelected = selectedCategory == category;
 
                         return Padding(
                           padding: const EdgeInsets.only(right: 10.0),
-                          child: GestureDetector(
-                            onTap: () =>
-                                setState(() => _selectedCategory = category),
-                            child: GlassContainer(
-                              color: isSelected
-                                  ? scheme.primary.withOpacity(0.45)
-                                  : Colors.white.withOpacity(0.12),
-                              borderRadius: 16,
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 16,
-                                vertical: 10,
-                              ),
-                              child: SizedBox(
-                                width: 112,
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  mainAxisAlignment:
-                                      MainAxisAlignment.spaceBetween,
-                                  children: [
-                                    Text(
-                                      category,
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: const TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                        color: Colors.white,
-                                        fontSize: 12,
-                                      ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              GestureDetector(
+                                onTap: () => setState(
+                                  () => _selectedCategory = category,
+                                ),
+                                child: GlassContainer(
+                                  color: isSelected
+                                      ? scheme.primary.withOpacity(0.45)
+                                      : Colors.white.withOpacity(0.12),
+                                  borderRadius: 16,
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 10,
+                                    vertical: 4,
+                                  ),
+                                  child: SizedBox(
+                                    width: 76,
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.spaceBetween,
+                                      children: [
+                                        Text(
+                                          category,
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: const TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                            color: Colors.white,
+                                            fontSize: 11,
+                                          ),
+                                        ),
+                                        Text(
+                                          '$count',
+                                          style: const TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 18,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                      ],
                                     ),
-                                    Text(
-                                      '$count',
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 26,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                                  ],
+                                  ),
                                 ),
                               ),
-                            ),
+                              if (category == 'All')
+                                CategorySortButton(
+                                  alphabetical: _categoriesAlphabetical,
+                                  onPressed: () => setState(
+                                    () => _categoriesAlphabetical =
+                                        !_categoriesAlphabetical,
+                                  ),
+                                ),
+                            ],
                           ),
                         );
                       },
                     ),
                   ),
-                  const SizedBox(height: 14),
+                  const SizedBox(height: 10),
                 ],
 
                 const SizedBox(height: 6),
@@ -670,22 +699,23 @@ class _BillingScreenState extends ConsumerState<BillingScreen> {
                 // === Products Grid Header ===
                 LayoutBuilder(
                   builder: (context, constraints) {
-                    final isCompact = constraints.maxWidth < 420;
-                    return Wrap(
-                      alignment: WrapAlignment.spaceBetween,
-                      runSpacing: 8,
+                    final compact = constraints.maxWidth < 380;
+                    final sortWidth = (constraints.maxWidth * 0.42)
+                        .clamp(compact ? 118.0 : 140.0, 150.0)
+                        .toDouble();
+                    return Row(
                       children: [
-                        SizedBox(
-                          width: isCompact
-                              ? constraints.maxWidth
-                              : constraints.maxWidth - 158,
+                        Expanded(
                           child: Text(
                             'Select Product',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                             style: Theme.of(context).textTheme.titleLarge,
                           ),
                         ),
+                        SizedBox(width: compact ? 6 : 8),
                         SizedBox(
-                          width: isCompact ? constraints.maxWidth : 150,
+                          width: sortWidth,
                           child: DropdownButtonHideUnderline(
                             child: DropdownButtonFormField<String>(
                               dropdownColor: scheme.surfaceContainer,
@@ -695,6 +725,7 @@ class _BillingScreenState extends ConsumerState<BillingScreen> {
                               ),
                               initialValue: _sortBy,
                               isDense: true,
+                              isExpanded: true,
                               decoration: InputDecoration(
                                 contentPadding: const EdgeInsets.symmetric(
                                   horizontal: 12,
@@ -726,7 +757,11 @@ class _BillingScreenState extends ConsumerState<BillingScreen> {
                                       .map(
                                         (s) => DropdownMenuItem(
                                           value: s,
-                                          child: Text(s),
+                                          child: Text(
+                                            s,
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
                                         ),
                                       )
                                       .toList(),

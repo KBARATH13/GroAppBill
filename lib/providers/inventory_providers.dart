@@ -9,43 +9,190 @@ import 'shop_provider.dart';
 
 // --- Notifiers ---
 
+String normalizeCategoryName(String category) {
+  final words = category
+      .trim()
+      .toLowerCase()
+      .replaceAll(RegExp(r'[^a-z0-9]+'), ' ')
+      .split(' ')
+      .where((word) => word.isNotEmpty)
+      .map(_normalizeCategoryWord);
+  return words.join(' ');
+}
+
+String _normalizeCategoryWord(String word) {
+  if (word == 'series' || word == 'species') return word;
+
+  if (word.length > 3 && word.endsWith('ies')) {
+    const ieEndingPlurals = {
+      'brownies',
+      'cookies',
+      'movies',
+      'pies',
+      'rookies',
+      'smoothies',
+      'veggies',
+    };
+    if (ieEndingPlurals.contains(word)) {
+      return word.substring(0, word.length - 1);
+    }
+    return '${word.substring(0, word.length - 3)}y';
+  }
+  if (word.length > 4 &&
+      (word.endsWith('sses') ||
+          word.endsWith('ches') ||
+          word.endsWith('shes') ||
+          word.endsWith('xes') ||
+          word.endsWith('zes'))) {
+    return word.substring(0, word.length - 2);
+  }
+  if (word.length > 3 &&
+      word != 'news' &&
+      word != 'lens' &&
+      word.endsWith('s') &&
+      !word.endsWith('ss') &&
+      !word.endsWith('us') &&
+      !word.endsWith('is')) {
+    return word.substring(0, word.length - 1);
+  }
+  return word;
+}
+
+Map<String, int> categoryProductCounts(List<Product> products) {
+  final counts = <String, int>{};
+  for (final product in products) {
+    final key = normalizeCategoryName(product.category);
+    if (key.isEmpty) continue;
+    counts.update(key, (count) => count + 1, ifAbsent: () => 1);
+  }
+  return counts;
+}
+
 class CategoriesNotifier extends StateNotifier<List<String>> {
+  static const defaultCategories = [
+    'Vegetables',
+    'Fruits',
+    'Dhall',
+    'Groceries',
+  ];
+
   final Ref _ref;
 
   CategoriesNotifier(this._ref) : super([]) {
     // Initialize state from current shop info
     state = _ref.read(shopInfoProvider).categories;
-    
+
     // Keep in sync with shopInfoProvider changes
     _ref.listen<ShopInfo>(shopInfoProvider, (previous, next) {
       state = next.categories;
     });
   }
 
-  void addCategory(String category) {
-    if (category.trim().isEmpty) return;
+  String addCategory(String category) {
     final trimmed = category.trim();
-    if (!state.contains(trimmed)) {
-      final shopInfo = _ref.read(shopInfoProvider);
-      final user = _ref.read(appUserProvider).valueOrNull;
-      if (user != null) {
-        final newCategories = [...shopInfo.categories, trimmed];
-        _ref.read(shopInfoProvider.notifier).updateShopInfo(
-          user.adminEmail, 
-          shopInfo.copyWith(categories: newCategories),
-        );
+    if (trimmed.isEmpty) return trimmed;
+
+    final shopInfo = _ref.read(shopInfoProvider);
+    final categoryKey = normalizeCategoryName(trimmed);
+    final deletedKeys = shopInfo.deletedCategories
+        .map(normalizeCategoryName)
+        .toSet();
+    final candidates = [
+      ...shopInfo.categories,
+      ..._ref.read(productsProvider).map((product) => product.category),
+    ];
+    String? existingCategory;
+    for (final candidate in candidates) {
+      if (normalizeCategoryName(candidate) == categoryKey &&
+          !deletedKeys.contains(normalizeCategoryName(candidate))) {
+        existingCategory = candidate.trim();
+        break;
       }
     }
+    final canonicalCategory = existingCategory ?? trimmed;
+
+    final user = _ref.read(appUserProvider).valueOrNull;
+    if (user != null) {
+      final newCategories = [...shopInfo.categories];
+      if (!newCategories.any(
+        (item) => normalizeCategoryName(item) == categoryKey,
+      )) {
+        newCategories.add(canonicalCategory);
+      }
+      final deletedCategories = shopInfo.deletedCategories
+          .where((item) => normalizeCategoryName(item) != categoryKey)
+          .toList();
+      if (newCategories.length != shopInfo.categories.length ||
+          deletedCategories.length != shopInfo.deletedCategories.length) {
+        _ref
+            .read(shopInfoProvider.notifier)
+            .updateShopInfo(
+              user.adminEmail,
+              shopInfo.copyWith(
+                categories: newCategories,
+                deletedCategories: deletedCategories,
+              ),
+            );
+      }
+    }
+    return canonicalCategory;
+  }
+
+  Future<void> deleteCategory(String category) async {
+    final categoryKey = normalizeCategoryName(category);
+    if (defaultCategories.any(
+      (item) => normalizeCategoryName(item) == categoryKey,
+    )) {
+      return;
+    }
+
+    final shopInfo = _ref.read(shopInfoProvider);
+    final hasProductsInCategory = _ref
+        .read(productsProvider)
+        .any(
+          (product) => normalizeCategoryName(product.category) == categoryKey,
+        );
+    if (!shopInfo.categories.any(
+          (item) => normalizeCategoryName(item) == categoryKey,
+        ) &&
+        !hasProductsInCategory) {
+      return;
+    }
+
+    final user = _ref.read(appUserProvider).valueOrNull;
+    if (user == null || !user.isAdmin) return;
+
+    final categories = shopInfo.categories
+        .where((item) => normalizeCategoryName(item) != categoryKey)
+        .toList();
+    final deletedCategories = {
+      ...shopInfo.deletedCategories.where(
+        (item) => normalizeCategoryName(item) != categoryKey,
+      ),
+      category,
+    }.toList();
+
+    await _ref
+        .read(shopInfoProvider.notifier)
+        .updateShopInfo(
+          user.adminEmail,
+          shopInfo.copyWith(
+            categories: categories,
+            deletedCategories: deletedCategories,
+          ),
+        );
   }
 
   void resetToDefaults() {
     final shopInfo = _ref.read(shopInfoProvider);
     final user = _ref.read(appUserProvider).valueOrNull;
     if (user != null) {
-      _ref.read(shopInfoProvider.notifier).updateShopInfo(
-        user.adminEmail, 
-        shopInfo.copyWith(categories: const ['Vegetables', 'Fruits', 'Dhall', 'Groceries']),
-      );
+      _ref
+          .read(shopInfoProvider.notifier)
+          .updateShopInfo(
+            user.adminEmail,
+            shopInfo.copyWith(categories: defaultCategories),
+          );
     }
   }
 }
@@ -71,10 +218,12 @@ class UnitsNotifier extends StateNotifier<List<String>> {
       final user = _ref.read(appUserProvider).valueOrNull;
       if (user != null) {
         final newUnits = [...shopInfo.units, trimmed];
-        _ref.read(shopInfoProvider.notifier).updateShopInfo(
-          user.adminEmail, 
-          shopInfo.copyWith(units: newUnits),
-        );
+        _ref
+            .read(shopInfoProvider.notifier)
+            .updateShopInfo(
+              user.adminEmail,
+              shopInfo.copyWith(units: newUnits),
+            );
       }
     }
   }
@@ -83,10 +232,12 @@ class UnitsNotifier extends StateNotifier<List<String>> {
     final shopInfo = _ref.read(shopInfoProvider);
     final user = _ref.read(appUserProvider).valueOrNull;
     if (user != null) {
-      _ref.read(shopInfoProvider.notifier).updateShopInfo(
-        user.adminEmail, 
-        shopInfo.copyWith(units: const ['kg', 'pc']),
-      );
+      _ref
+          .read(shopInfoProvider.notifier)
+          .updateShopInfo(
+            user.adminEmail,
+            shopInfo.copyWith(units: const ['kg', 'pc']),
+          );
     }
   }
 }
@@ -101,23 +252,23 @@ class ProductsNotifier extends StateNotifier<List<Product>> {
 
   void _invalidateCache() => _barcodeCache = null;
 
-  /// O(1) lookup for barcode scanning. 
+  /// O(1) lookup for barcode scanning.
   /// Optimized for scaling to large inventories.
   Product? findByBarcode(String barcode) {
     if (barcode.trim().isEmpty) return null;
     final b = barcode.trim();
-    
+
     _barcodeCache ??= {
       for (final p in state)
         if (p.barcode != null && p.barcode!.trim().isNotEmpty)
-          p.barcode!.trim(): p
+          p.barcode!.trim(): p,
     };
     return _barcodeCache![b];
   }
 
   Future<void> _loadProducts() async {
     final prefs = await SharedPreferences.getInstance();
-    
+
     // Check keys in order of priority (newest to oldest)
     String? jsonStr = prefs.getString('grocery-products');
     jsonStr ??= prefs.getString('grocery-products-v2');
@@ -126,8 +277,10 @@ class ProductsNotifier extends StateNotifier<List<Product>> {
     if (jsonStr != null) {
       try {
         final List decoded = jsonDecode(jsonStr);
-        state = decoded.map((p) => Product.fromJson(p as Map<String, dynamic>)).toList();
-        
+        state = decoded
+            .map((p) => Product.fromJson(p as Map<String, dynamic>))
+            .toList();
+
         // If we found data in an old key, save it to the new key immediately
         if (prefs.getString('grocery-products') == null) {
           await _saveProducts();
@@ -149,7 +302,7 @@ class ProductsNotifier extends StateNotifier<List<Product>> {
     _invalidateCache();
     state = [...state, product];
     await _saveProducts();
-    
+
     // Cloud push
     final user = _ref.read(appUserProvider).valueOrNull;
     if (user != null) {
@@ -183,7 +336,9 @@ class ProductsNotifier extends StateNotifier<List<Product>> {
 
   void incrementUsage(String id) {
     _invalidateCache();
-    state = state.map((p) => p.id == id ? p.copyWith(usageCount: p.usageCount + 1) : p).toList();
+    state = state
+        .map((p) => p.id == id ? p.copyWith(usageCount: p.usageCount + 1) : p)
+        .toList();
   }
 
   void updateFromStream(List<Product> synced) {
@@ -198,18 +353,41 @@ class ProductsNotifier extends StateNotifier<List<Product>> {
   }
 }
 
-List<String> sortCategoriesForDisplay(List<String> categories, List<Product> products) {
-  final baseCategories = categories.toSet().toList();
+List<String> sortCategoriesForDisplay(
+  List<String> categories,
+  List<Product> products, {
+  bool alphabetical = false,
+  List<String> excludedCategories = const [],
+}) {
+  final excluded = excludedCategories.map(normalizeCategoryName).toSet();
+  final uniqueCategories = <String, String>{};
+  for (final category in [
+    ...categories,
+    ...products.map((product) => product.category),
+  ]) {
+    final key = normalizeCategoryName(category);
+    if (key.isEmpty || category == 'All' || excluded.contains(key)) continue;
+    uniqueCategories.putIfAbsent(key, () => category.trim());
+  }
+  final baseCategories = uniqueCategories.values.toList();
   if (baseCategories.isEmpty) return const ['All'];
 
+  final productCounts = categoryProductCounts(products);
   final sorted = [...baseCategories]
     ..sort((a, b) {
-      final countA = products.where((product) => product.category == a).length;
-      final countB = products.where((product) => product.category == b).length;
+      final nameComparison = a.toLowerCase().compareTo(b.toLowerCase());
+      if (alphabetical) {
+        return nameComparison != 0 ? nameComparison : a.compareTo(b);
+      }
+
+      final keyA = normalizeCategoryName(a);
+      final keyB = normalizeCategoryName(b);
+      final countA = productCounts[keyA] ?? 0;
+      final countB = productCounts[keyB] ?? 0;
       if (countB != countA) {
         return countB.compareTo(countA);
       }
-      return a.toLowerCase().compareTo(b.toLowerCase());
+      return nameComparison != 0 ? nameComparison : a.compareTo(b);
     });
 
   return sorted;
@@ -225,9 +403,10 @@ final inventoryStreamProvider = StreamProvider<List<Product>>((ref) {
 });
 
 // Categories provider - manages product categories with cloud sync via shopInfoProvider
-final categoriesProvider = StateNotifierProvider<CategoriesNotifier, List<String>>((ref) {
-  return CategoriesNotifier(ref);
-});
+final categoriesProvider =
+    StateNotifierProvider<CategoriesNotifier, List<String>>((ref) {
+      return CategoriesNotifier(ref);
+    });
 
 // Units provider - manages product units with cloud sync via shopInfoProvider
 final unitsProvider = StateNotifierProvider<UnitsNotifier, List<String>>((ref) {

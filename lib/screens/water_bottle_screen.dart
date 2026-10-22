@@ -13,6 +13,7 @@ class WaterBottleScreen extends ConsumerStatefulWidget {
 
 class _WaterBottleScreenState extends ConsumerState<WaterBottleScreen> {
   late final TextEditingController _searchController;
+  WaterBottleCustomerFilter _selectedFilter = WaterBottleCustomerFilter.all;
 
   @override
   void initState() {
@@ -140,7 +141,7 @@ class _WaterBottleScreenState extends ConsumerState<WaterBottleScreen> {
                           key: ValueKey('purchase-row-$index'),
                           children: [
                             DropdownButtonFormField<BottleType>(
-                              value: item.bottleType,
+                              initialValue: item.bottleType,
                               isExpanded: true,
                               decoration: const InputDecoration(
                                 labelText: 'Bottle Type',
@@ -179,8 +180,9 @@ class _WaterBottleScreenState extends ConsumerState<WaterBottleScreen> {
                                     onChanged: (_) => updateDeposit(index),
                                     validator: (value) {
                                       final qty = int.tryParse(value ?? '');
-                                      if (qty == null || qty <= 0)
+                                      if (qty == null || qty <= 0) {
                                         return 'Invalid quantity';
+                                      }
                                       return null;
                                     },
                                   ),
@@ -197,7 +199,7 @@ class _WaterBottleScreenState extends ConsumerState<WaterBottleScreen> {
                             ),
                             const SizedBox(height: 12),
                             DropdownButtonFormField<PaymentMethod>(
-                              value: item.paymentMethod,
+                              initialValue: item.paymentMethod,
                               isExpanded: true,
                               decoration: const InputDecoration(
                                 labelText: 'Payment method',
@@ -240,7 +242,7 @@ class _WaterBottleScreenState extends ConsumerState<WaterBottleScreen> {
                             const SizedBox(height: 16),
                           ],
                         );
-                      }).toList(),
+                      }),
                       Align(
                         alignment: Alignment.centerLeft,
                         child: TextButton.icon(
@@ -429,14 +431,25 @@ class _WaterBottleScreenState extends ConsumerState<WaterBottleScreen> {
 
   List<WaterBottleRecord> _sortedRecords(List<WaterBottleRecord> records) {
     final result = List<WaterBottleRecord>.from(records);
-    result.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    result.sort(
+      (a, b) => a.customerName.toLowerCase().compareTo(
+        b.customerName.toLowerCase(),
+      ),
+    );
     return result;
   }
 
   @override
   Widget build(BuildContext context) {
     final waterState = ref.watch(waterBottleProvider);
-    final filteredRecords = _sortedRecords(waterState.filteredRecords);
+    final filteredRecords = _sortedRecords(
+      waterState.filteredRecords
+          .where(_selectedFilter.includes)
+          .toList(),
+    );
+    final customerCount = waterState.records
+      .where(_selectedFilter.includes)
+      .length;
     return Scaffold(
       backgroundColor: Colors.transparent,
       body: Padding(
@@ -480,11 +493,88 @@ class _WaterBottleScreenState extends ConsumerState<WaterBottleScreen> {
               ],
             ),
             const SizedBox(height: 12),
+            GlassContainer(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              child: Row(
+                children: [
+                  const Icon(Icons.people_outline, color: Colors.white70),
+                  const SizedBox(width: 8),
+                  const Expanded(
+                    child: Text(
+                      'Customers',
+                      style: TextStyle(
+                        color: Colors.white70,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                  Text(
+                    '$customerCount',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Transform.translate(
+                    offset: const Offset(8, 0),
+                    child: SizedBox(
+                      width: 140,
+                      child: DropdownButton<WaterBottleCustomerFilter>(
+                        value: _selectedFilter,
+                        isExpanded: true,
+                        dropdownColor: const Color(0xFF1E1E1E),
+                        iconEnabledColor: Colors.white70,
+                        style: const TextStyle(color: Colors.white),
+                        underline: const SizedBox.shrink(),
+                        icon: const SizedBox.shrink(),
+                        selectedItemBuilder: (context) {
+                          return WaterBottleCustomerFilter.values.map((filter) {
+                            return Row(
+                              children: [
+                                const Icon(Icons.arrow_drop_down),
+                                const SizedBox(width: 4),
+                                Expanded(
+                                  child: Text(
+                                    '${filter.label} (${filter.bottleCount(waterState.records)})',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              ],
+                            );
+                          }).toList();
+                        },
+                        items: WaterBottleCustomerFilter.values.map((filter) {
+                          return DropdownMenuItem(
+                            value: filter,
+                            child: Text(
+                              '${filter.label} (${filter.bottleCount(waterState.records)})',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          );
+                        }).toList(),
+                        onChanged: (filter) {
+                          if (filter != null) {
+                            setState(() => _selectedFilter = filter);
+                          }
+                        },
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 8),
             Expanded(
               child: filteredRecords.isEmpty
                   ? Center(
                       child: Text(
-                        waterState.searchTerm.isNotEmpty
+                        waterState.searchTerm.isNotEmpty ||
+                                _selectedFilter !=
+                                    WaterBottleCustomerFilter.all
                             ? 'No customers found'
                             : 'No water bottle customers yet',
                         style: const TextStyle(color: Colors.white70),
